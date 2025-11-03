@@ -1,0 +1,144 @@
+package com.exp.hentai1.data.remote
+
+import android.content.Context
+import android.os.Looper
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import java.net.CookieHandler
+import java.net.CookieManager
+import java.net.URLEncoder
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+
+object NetworkUtils {
+
+    // 一个持久化的OkHttpClient，与WebView共享Cookie
+    private val client: OkHttpClient by lazy {
+        // 确保设置了默认的CookieHandler来桥接WebView和OkHttp的Cookie
+        CookieHandler.setDefault(CookieManager())
+        OkHttpClient.Builder()
+            .build()
+    }
+
+    @Volatile private var isSolvingChallenge = false
+
+    suspend fun fetchHtml(context: Context, url: String): String? = withContext(Dispatchers.IO) {
+        if (isSolvingChallenge) return@withContext null // 防止重入调用
+
+        var response = makeRequest(url)
+
+        // 检查Cloudflare质询（503 Service Unavailable是一个常见的指标）
+        if (response.code == 503) {
+            isSolvingChallenge = true
+            val challengeSolved = solveChallengeWithWebView(context, url)
+            isSolvingChallenge = false
+
+            if (challengeSolved) {
+                // 使用新的Cookie重试请求
+                response = makeRequest(url)
+            }
+        }
+
+        if (response.isSuccessful) {
+            response.body?.string()
+        } else {
+            "Error: ${response.code} - ${response.message}"
+        }
+    }
+
+    private fun makeRequest(url: String): Response {
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .build()
+        return client.newCall(request).execute()
+    }
+
+    private suspend fun solveChallengeWithWebView(context: Context, url: String): Boolean =
+        withContext(Dispatchers.Main) {
+            suspendCancellableCoroutine { continuation ->
+                if (Looper.myLooper() == null) {
+                    Looper.prepare()
+                }
+
+                val webView = WebView(context).apply {
+                    // 警告: 启用JavaScript可能引入XSS漏洞，请仔细审查
+                    settings.javaScriptEnabled = true
+                    settings.userAgentString =
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+                    webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView, loadedUrl: String) {
+                            super.onPageFinished(view, loadedUrl)
+                            // 页面加载完成后，检查cf_clearance cookie。
+                            val cookies = android.webkit.CookieManager.getInstance().getCookie(loadedUrl)
+                            val hasClearanceCookie = cookies?.contains("cf_clearance") == true
+
+                            if (hasClearanceCookie) {
+                                if (continuation.isActive) {
+                                    continuation.resume(true)
+                                    destroy()
+                                }
+                            }
+                            // 如果仍然是质询页面，WebView会自动继续尝试。
+                            // 我们可以在这里添加一个超时，以防止卡住。
+                        }
+
+                        @Suppress("OverridingDeprecatedMember")
+                        override fun onReceivedError(
+                            view: WebView?,
+                            errorCode: Int,
+                            description: String?,
+                            failingUrl: String?
+                        ) {
+                            super.onReceivedError(view, errorCode, description, failingUrl)
+                            if (continuation.isActive) {
+                                continuation.resumeWithException(Exception("WebView error ($failingUrl): $description"))
+                                view?.destroy()
+                            }
+                        }
+                    }
+                }
+
+                continuation.invokeOnCancellation {
+                    webView.destroy()
+                }
+
+                webView.loadUrl(url)
+            }
+        }
+
+    fun searchUrl(keyword: String): String {
+        return "https://hentai-one.com/articles/search?keyword=${URLEncoder.encode(keyword, "UTF-8")}"
+    }
+
+    fun detailUrl(comicId: String): String {
+        return "https://hentai-one.com/articles/$comicId"
+    }
+
+    fun viewerUrl(comicId: String, page: Int = 1): String {
+        return "https://hentai-one.com/viewer?articleId=$comicId&page=$page"
+    }
+
+    fun rankingUrl(): String {
+        return "https://hentai-one.com/articles/rank"
+    }
+
+    fun latestUrl(page: Int = 1): String {
+        return if (page == 1) "https://hentai-one.com/" else "https://hentai-one.com/?page=$page"
+    }
+
+    fun favoritesUrl(): String {
+        return "https://hentai-one.com/favorites"
+    }
+
+    fun tagUrl(tagId: String): String {
+        return "https://hentai-one.com/tags/$tagId"
+    }
+}
