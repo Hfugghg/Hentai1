@@ -3,6 +3,7 @@ package com.exp.hentai1.data.remote.parser
 import android.util.Log
 import com.exp.hentai1.data.Comic
 import com.exp.hentai1.data.Tag
+import com.exp.hentai1.data.remote.NetworkUtils
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
@@ -153,7 +154,7 @@ class ComicDataParser {
                 val id = article.getInt("id").toString()
                 val title = article.getString("title")
                 val cover = article.getString("cover")
-                val coverUrl = "https://cdn.imagedeliveries.com/$cover"
+                val coverUrl = NetworkUtils.getCoverUrl(cover)
 
                 val tagsArray = article.getJSONArray("tags")
                 val tags: List<Tag> = (0 until tagsArray.length()).map { i ->
@@ -161,8 +162,20 @@ class ComicDataParser {
                     Tag(id = tagJson.getInt("id").toString(), name = tagJson.getString("name"))
                 }
 
+                // --- 【修改】将 author 转换为 artists: List<Tag> ---
                 val authorObject = article.optJSONObject("author")
-                val author = authorObject?.getString("name") ?: "N/A"
+                val artistsList = if (authorObject != null) {
+                    val authorId = authorObject.optInt("id", -1).toString()
+                    val authorName = authorObject.optString("name")
+                    if (authorId != "-1" && authorName.isNotEmpty()) {
+                        listOf(Tag(id = authorId, name = authorName))
+                    } else {
+                        emptyList()
+                    }
+                } else {
+                    emptyList()
+                }
+                // --- 【修改结束】---
 
                 val pagesArray = article.getJSONArray("pages")
                 val imageList = (0 until pagesArray.length()).map { i ->
@@ -172,15 +185,21 @@ class ComicDataParser {
                 }
 
                 Log.i(TAG, "[parsePayloadDetail_Old] 成功解析 (ID: $id)")
+                // --- 【修改】更新 Comic 构造函数 ---
                 Comic(
                     id = id,
                     title = title,
                     coverUrl = coverUrl,
                     tags = tags,
-                    author = author,
-                    imageList = imageList,
-                    language = "" // 旧结构没有语言
+                    artists = artistsList, // 使用新的 artistsList
+                    groups = emptyList(), // 新增字段，旧结构无对应，默认为空
+                    parodies = emptyList(), // 新增字段，旧结构无对应，默认为空
+                    characters = emptyList(), // 新增字段，旧结构无对应，默认为空
+                    languages = emptyList(), // 新增字段，旧结构无对应，默认为空
+                    categories = emptyList(), // 新增字段，旧结构无对应，默认为空
+                    imageList = imageList
                 )
+                // --- 【修改结束】---
             } catch (e: Exception) {
                 Log.e(TAG, "[parsePayloadDetail_Old] 解析详情页 payload 失败: ${e.message}", e)
                 null
@@ -235,15 +254,21 @@ class ComicDataParser {
                     Comic(
                         id = id,
                         title = titleElement.text().trim(),
-                        coverUrl = imgElement.attr("src"),
-                        language = "日语" // 语言信息可能需要更复杂的逻辑来确定
+                        coverUrl = NetworkUtils.getCoverUrl(imgElement.attr("src")),
+                        artists = emptyList(), // 新增字段，旧结构无对应，默认为空
+                        groups = emptyList(), // 新增字段，旧结构无对应，默认为空
+                        parodies = emptyList(), // 新增字段，旧结构无对应，默认为空
+                        characters = emptyList(), // 新增字段，旧结构无对应，默认为空
+                        tags = emptyList(), // 新增字段，旧结构无对应，默认为空
+                        languages = emptyList(), // 新增字段，旧结构无对应，默认为空
+                        categories = emptyList() // 新增字段，旧结构无对应，默认为空
                     )
                 } else {
                     Log.w(TAG, "[parseComicElement] 无法从元素中完整解析漫画: id=$id, title=${titleElement?.text()}, img=${imgElement?.attr("src")}")
                     null
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "[parseComicElement] 解析单个漫画元素时出错: ${e.message}")
+                Log.e(TAG, "[parseComicElement] 解析单个漫画元素时出错: ${e.message}", e)
                 null
             }
         }

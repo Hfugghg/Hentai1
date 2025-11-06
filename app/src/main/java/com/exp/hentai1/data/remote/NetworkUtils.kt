@@ -1,5 +1,6 @@
 package com.exp.hentai1.data.remote
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Looper
 import android.webkit.WebView
@@ -60,6 +61,7 @@ object NetworkUtils {
         return client.newCall(request).execute()
     }
 
+    @SuppressLint("SetJavaScriptEnabled")
     private suspend fun solveChallengeWithWebView(context: Context, url: String): Boolean =
         withContext(Dispatchers.Main) {
             suspendCancellableCoroutine { continuation ->
@@ -114,8 +116,25 @@ object NetworkUtils {
             }
         }
 
-    fun searchUrl(keyword: String): String {
-        return "https://hentai-one.com/articles/search?keyword=${URLEncoder.encode(keyword, "UTF-8")}"
+    private fun buildEntityUrl(entity: String, id: Any, popular: Boolean = false, page: Int = 1): String {
+        val baseUrl = "https://hentai-one.com/$entity/$id"
+        val queryParams = mutableListOf<String>()
+        if (popular) {
+            queryParams.add("type=popular")
+        }
+        if (page > 1) {
+            queryParams.add("page=$page")
+        }
+        return if (queryParams.isEmpty()) {
+            baseUrl
+        } else {
+            "$baseUrl?${queryParams.joinToString("&")}"
+        }
+    }
+
+    fun searchUrl(keyword: String, popular: Boolean = false, page: Int = 1): String {
+        val popularParam = if (popular) "&type=popular" else ""
+        return "https://hentai-one.com/articles/search?keyword=${URLEncoder.encode(keyword, "UTF-8")}$popularParam&page=$page"
     }
 
     fun detailUrl(comicId: String): String {
@@ -126,19 +145,68 @@ object NetworkUtils {
         return "https://hentai-one.com/viewer?articleId=$comicId&page=$page"
     }
 
-    fun rankingUrl(): String {
-        return "https://hentai-one.com/articles/rank"
+    fun daylyRankUrl(page: Int = 1): String {
+        return "https://hentai-one.com/articles/rank?t=daily&page=$page"
+    }
+
+    fun weeklyRankUrl(page: Int = 1): String {
+        return "https://hentai-one.com/articles/rank?t=weekly&page=$page"
+    }
+
+    fun monthlyRankUrl(page: Int = 1): String {
+        return "https://hentai-one.com/articles/rank?t=monthly&page=$page"
+    }
+
+    fun allTimeRankUrl(page: Int = 1): String {
+        return "https://hentai-one.com/articles/rank?t=all_time&page=$page"
     }
 
     fun latestUrl(page: Int = 1): String {
         return if (page == 1) "https://hentai-one.com/" else "https://hentai-one.com/?page=$page"
     }
 
-    fun favoritesUrl(): String {
-        return "https://hentai-one.com/favorites"
+    fun tagUrl(tagId: String, popular: Boolean = false, page: Int = 1): String {
+        return buildEntityUrl("tags", tagId, popular, page)
     }
 
-    fun tagUrl(tagId: String): String {
-        return "https://hentai-one.com/tags/$tagId"
+    fun thumbnailsUrl(comicId: String): String {
+        return "https://cdn.imagedeliveries.com/$comicId/thumbnails/cover.webp"
     }
+
+    fun getCoverUrl(path: String): String {
+        return if (path.startsWith("https://")) {
+            path
+        } else {
+            "https://cdn.imagedeliveries.com/$path"
+        }
+    }
+
+    fun artistsUrl(artistId: Int, popular: Boolean = false, page: Int = 1): String {
+        return buildEntityUrl("artists", artistId, popular, page)
+    }
+
+    fun groupsUrl(groupsId: Int, popular: Boolean = false, page: Int = 1): String {
+        return buildEntityUrl("groups", groupsId, popular, page)
+    }
+
+    fun parodiesUrl(parodiesId: Int, popular: Boolean = false, page: Int = 1): String {
+        return buildEntityUrl("parodies", parodiesId, popular, page)
+    }
+
+    fun charactersUrl(charactersId: Int, popular: Boolean = false, page: Int = 1): String {
+        return buildEntityUrl("characters", charactersId, popular, page)
+    }
+
+    fun tagsUrl(tagsId: Int, popular: Boolean = false, page: Int = 1): String {
+        return buildEntityUrl("tags", tagsId, popular, page)
+    }
+
+    fun languagesUrl(languagesId: Int, popular: Boolean = false, page: Int = 1): String {
+        return buildEntityUrl("languages", languagesId, popular, page)
+    }
+
+    fun categoriesUrl(categoriesId: Int, popular: Boolean = false, page: Int = 1): String {
+        return buildEntityUrl("categories", categoriesId, popular, page)
+    }
+
 }

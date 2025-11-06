@@ -14,12 +14,17 @@ data class Comic(
     val id: String,
     val title: String,
     val coverUrl: String,
-    val language: String,
+
+    // --- 【修改】根据主人要求，调整字段顺序并添加 languages --- 
+    val artists: List<Tag> = emptyList(),
+    val groups: List<Tag> = emptyList(),
+    val parodies: List<Tag> = emptyList(),
+    val characters: List<Tag> = emptyList(),
     val tags: List<Tag> = emptyList(),
-    val author: String? = null,
-    val circle: String? = null,
-    val parody: String? = null,
-    val category: String? = null,
-    val character: String? = null,
-    val imageList: List<String> = emptyList()
+    val languages: List<Tag> = emptyList(),
+    val categories: List<Tag> = emptyList(),
+    // --- 【修改结束】---
+
+    val imageList: List<String> = emptyList(),
+    val timestamp: Long = 0
 )

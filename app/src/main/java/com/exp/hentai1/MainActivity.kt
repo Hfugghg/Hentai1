@@ -23,6 +23,7 @@ import com.exp.hentai1.ui.home.HomeScreen
 import com.exp.hentai1.ui.home.HomeViewModel
 import com.exp.hentai1.ui.ranking.RankingMoreScreen
 import com.exp.hentai1.ui.reader.ReaderScreen
+import com.exp.hentai1.ui.search.SearchResultScreen
 import com.exp.hentai1.ui.theme.Hentai1Theme
 
 class MainActivity : ComponentActivity() {
@@ -63,7 +64,8 @@ fun Hentai1App(viewModel: HomeViewModel) {
                         navController.navigate("detail/$comicId")
                     },
                     onFavoritesClick = { navController.navigate("favorites") },
-                    onRankingMoreClick = { navController.navigate("rankingMore") } // 新增的导航
+                    onRankingMoreClick = { navController.navigate("rankingMore") },
+                    onSearch = { query -> navController.navigate("search/$query") }
                 )
             }
             composable(
@@ -76,6 +78,9 @@ fun Hentai1App(viewModel: HomeViewModel) {
                         comicId = comicId,
                         onNavigateToReader = { id ->
                             navController.navigate("reader/$id")
+                        },
+                        onNavigateToTagSearch = { query ->
+                            navController.navigate("search/$query")
                         }
                     )
                 }
@@ -94,8 +99,24 @@ fun Hentai1App(viewModel: HomeViewModel) {
                     navController.navigate("detail/$comicId")
                 })
             }
-            composable("rankingMore") { // 新增的更多排行路由
-                RankingMoreScreen()
+            composable("rankingMore") {
+                RankingMoreScreen(onComicClick = { comicId ->
+                    navController.navigate("detail/$comicId")
+                })
+            }
+            composable(
+                route = "search/{query}",
+                arguments = listOf(navArgument("query") { type = NavType.StringType })
+            ) {
+                val query = it.arguments?.getString("query")
+                if (query != null) {
+                    SearchResultScreen(
+                        query = query,
+                        onComicClick = { comicId ->
+                            navController.navigate("detail/$comicId")
+                        }
+                    )
+                }
             }
         }
     }

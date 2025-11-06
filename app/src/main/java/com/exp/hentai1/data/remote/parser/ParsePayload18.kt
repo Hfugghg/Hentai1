@@ -85,7 +85,7 @@ fun parsePayload18(payloadString: String): List<Comic> {
                         id = id,
                         title = title.trim(),
                         coverUrl = coverUrl, // 这里已经是完整的 URL
-                        language = "日语" // 暂时假定
+                        languages = emptyList(),
                     )
                 )
             } else {

@@ -22,7 +22,7 @@ fun parsePayload6(payloadString: String): List<String> {
     }
 
     try {
-        // 根据 New 1.txt 的结构 ，数据深深地嵌套在结构中。
+        // 根据 parsePayload6 的结构 ，数据深深地嵌套在结构中。
         // 路径大致为: root[1][3].children[3].children[3].slides
 
         // 1. 根数组

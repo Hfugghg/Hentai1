@@ -9,6 +9,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Menu
@@ -19,10 +21,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.exp.hentai1.data.Comic
 import com.exp.hentai1.ui.common.AppDrawer
+import com.exp.hentai1.ui.common.singleClickable // 导入 singleClickable
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
@@ -35,6 +39,7 @@ fun HomeScreen(
     onComicClick: (String) -> Unit,
     onFavoritesClick: () -> Unit,
     onRankingMoreClick: () -> Unit, // 新增的参数
+    onSearch: (String) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -47,7 +52,7 @@ fun HomeScreen(
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .filter { it != null && it >= listState.layoutInfo.totalItemsCount - 5 } // 当滚动到倒数第5个item时开始加载
             .distinctUntilChanged()
-            .collect { 
+            .collect {
                 if (uiState.canLoadMore && !uiState.isLoadingMore) {
                     viewModel.loadMoreLatestComics()
                 }
@@ -86,6 +91,8 @@ fun HomeScreen(
                             ),
                             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(onSearch = { onSearch(searchText) }),
                             decorationBox = { innerTextField ->
                                 Box(
                                     modifier = Modifier
@@ -148,7 +155,8 @@ fun HomeScreen(
                     Column(
                         modifier = modifier
                             .fillMaxSize()
-                            .padding(paddingValues),
+                            .padding(paddingValues)
+                            .clickable { viewModel.fetchAllComics() },
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
@@ -157,6 +165,7 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(16.dp)
                         )
+                        Text(text = "点击屏幕重试")
                     }
                 }
 
@@ -292,7 +301,7 @@ fun RankingComicItem(comic: Comic, onComicClick: (String) -> Unit) {
     Column(
         modifier = Modifier
             .width(100.dp)
-            .clickable { onComicClick(comic.id) },
+            .singleClickable { onComicClick(comic.id) }, // 使用 singleClickable
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         AsyncImage(
@@ -315,7 +324,7 @@ fun LatestUpdateItem(comic: Comic, modifier: Modifier = Modifier, onComicClick: 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable { onComicClick(comic.id) },
+            .singleClickable { onComicClick(comic.id) }, // 使用 singleClickable
         verticalAlignment = Alignment.Top
     ) {
         AsyncImage(
@@ -329,7 +338,13 @@ fun LatestUpdateItem(comic: Comic, modifier: Modifier = Modifier, onComicClick: 
         Column(modifier = Modifier.weight(1f)) {
             Text(text = comic.title, style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(text = "语言: ${comic.language}", style = MaterialTheme.typography.bodySmall)
+            // 修改此处，使用 languages 列表
+            val languageText = if (comic.languages.isNotEmpty()) {
+                comic.languages.joinToString { it.name }
+            } else {
+                "未知"
+            }
+            Text(text = "语言: $languageText", style = MaterialTheme.typography.bodySmall)
             Spacer(modifier = Modifier.height(4.dp))
         }
     }

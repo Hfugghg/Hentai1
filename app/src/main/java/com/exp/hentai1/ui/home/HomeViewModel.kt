@@ -31,7 +31,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         fetchAllComics()
     }
 
-    private fun fetchAllComics() {
+    fun fetchAllComics() {
         viewModelScope.launch {
             _uiState.value = HomeUiState(isLoading = true)
             try {
