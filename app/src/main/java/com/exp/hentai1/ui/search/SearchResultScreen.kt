@@ -36,6 +36,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.exp.hentai1.ui.home.LatestUpdateItem
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,7 +50,6 @@ fun SearchResultScreen(
         factory = SearchViewModelFactory(application)
     )
 
-    // 【修改】从 query 中解析出真正的搜索查询和标题
     val (searchQuery, title) = remember(query) {
         if (query.startsWith("tag:")) {
             val parts = query.split(":", limit = 4)
@@ -56,17 +57,13 @@ fun SearchResultScreen(
                 val tagType = parts[1]
                 val tagId = parts[2]
                 val tagName = parts[3]
-                // 真正的搜索查询是 "type:id"
                 val actualQuery = "$tagType:$tagId"
-                // 标题是标签名
                 val screenTitle = tagName
                 actualQuery to screenTitle
             } else {
-                // 格式不正确，按原样处理
                 query to "搜索: $query"
             }
         } else {
-            // 普通文本搜索
             query to "搜索: $query"
         }
     }
@@ -84,20 +81,50 @@ fun SearchResultScreen(
     }
     val listState = listStates[selectedType]!!
 
+    // Restore scroll position when the list is first displayed or tab changes
+    LaunchedEffect(listState, searchState.comics) {
+        if (searchState.comics.isNotEmpty() && listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) {
+            listState.scrollToItem(
+                index = searchState.firstVisibleItemIndex,
+                scrollOffset = searchState.firstVisibleItemScrollOffset
+            )
+        }
+    }
+
+    // Save scroll position and handle pagination
     LaunchedEffect(listState) {
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
-            .filter { it != null && it >= listState.layoutInfo.totalItemsCount - 5 }
-            .distinctUntilChanged()
-            .collect { 
-                viewModel.loadMore()
+        // Save scroll position
+        launch {
+            snapshotFlow {
+                if (listState.isScrollInProgress) {
+                    Triple(selectedType, listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
+                } else {
+                    null
+                }
             }
+                .filterNotNull()
+                .distinctUntilChanged()
+                .collect { (type, index, offset) ->
+                    viewModel.onScrollPositionChanged(type, index, offset)
+                }
+        }
+
+        // Pagination
+        launch {
+            snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+                .filter { it != null && it >= listState.layoutInfo.totalItemsCount - 5 }
+                .distinctUntilChanged()
+                .collect {
+                    viewModel.loadMore()
+                }
+        }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 windowInsets = WindowInsets(0, 0, 0, 0),
-                title = { Text(title) } // 【修改】使用新的 title
+                title = { Text(title) }
             )
         }
     ) { paddingValues ->
@@ -132,6 +159,7 @@ fun SearchResultScreen(
                         CircularProgressIndicator()
                     }
                 }
+
                 searchState.error != null -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
@@ -141,6 +169,18 @@ fun SearchResultScreen(
                         )
                     }
                 }
+
+                searchState.comics.isEmpty() -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "主人，没有找到相关的本子呢~",
+                            style = MaterialTheme.typography.bodyLarge,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                }
+
                 else -> {
                     LazyColumn(
                         state = listState,

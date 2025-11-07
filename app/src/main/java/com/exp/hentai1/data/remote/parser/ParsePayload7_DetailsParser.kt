@@ -82,30 +82,30 @@ internal fun parseComicDetails(detailsObject: JSONObject, comics: MutableList<Co
 
             Log.d(TAG, "[7-Details] 正在处理信息组: '$titleText'")
 
-            // --- 【修改】使用 extractTagLikeItems 辅助函数重构 ---
+            // --- 【修改】添加多语言支持 (CN, EN)，扩展 when 语句 ---
             when (titleText) {
-                "作者" -> {
+                "作者", "Artists" -> { // "作者" (JP, CN) [cite: 1]
                     // 对应 'artists' -> 'artistsId'
                     artists.addAll(extractTagLikeItems(groupChildren, ::getSingleElement))
                 }
 
-                "作品言語" -> {
+                "作品言語", "作品语言", "Languages" -> { // "作品言語" (JP), "作品语言" (CN) [cite: 5]
                     // 对应 'languages' -> 'languagesId'
                     languages.addAll(extractTagLikeItems(groupChildren, ::getSingleElement))
                 }
 
-                "タグ" -> {
-                    Log.d(TAG, "[7-Details] 正在解析 'タグ'...")
+                "タグ", "标签", "Tags" -> { // "タグ" (JP), "标签" (CN) [cite: 3]
+                    Log.d(TAG, "[7-Details] 正在解析 '标签' (Tags)...")
                     val tagsArray: JSONArray
                     val firstValue = groupChildren.optJSONArray(1)
 
                     // 检查是 "嵌套" 结构（所有标签都在一个数组里）
                     // 还是 "扁平" 结构（所有标签都是 groupChildren 的直接子元素）
                     if (groupChildren.length() == 2 && firstValue != null) {
-                        Log.d(TAG, "[7-Details] 检测到 'タグ' 为嵌套结构。")
+                        Log.d(TAG, "[7-Details] 检测到 '标签' 为嵌套结构。")
                         tagsArray = firstValue
                     } else {
-                        Log.d(TAG, "[7-Details] 检测到 'タグ' 为扁平结构。")
+                        Log.d(TAG, "[7-Details] 检测到 '标签' 为扁平结构。")
                         tagsArray = JSONArray()
                         // 【关键】从索引 1 开始循环，获取所有后续条目
                         for (j in 1 until groupChildren.length()) {
@@ -143,41 +143,40 @@ internal fun parseComicDetails(detailsObject: JSONObject, comics: MutableList<Co
                                 }
                             }
                         } catch (e: Exception) {
-                            Log.w(TAG, "[7-Details] 解析单个 'タグ' 失败 at index $j: ${e.message}")
+                            Log.w(TAG, "[7-Details] 解析单个 '标签' 失败 at index $j: ${e.message}")
                             // 继续处理下一个标签，不要中断
                             continue
                         }
                     }
-                    Log.i(TAG, "[7-Details] 'タグ' 解析完成，共 ${tags.size} 个。")
+                    Log.i(TAG, "[7-Details] '标签' 解析完成，共 ${tags.size} 个。")
                 }
 
-                "サークル" -> {
+                "サークル", "团队", "Groups" -> { // "サークル" (JP), "团队" (CN) [cite: 1]
                     // 对应 'groups' -> 'groupsId'
                     groups.addAll(extractTagLikeItems(groupChildren, ::getSingleElement))
                 }
 
-                "原作" -> {
+                "原作", "Parodies" -> { // "原作" (JP, CN) [cite: 1]
                     // 对应 'parodies' -> 'parodiesId'
                     parodies.addAll(extractTagLikeItems(groupChildren, ::getSingleElement))
                 }
 
-                "カテゴリー" -> {
+                "カテゴリー", "类别", "Categories" -> { // "カテゴリー" (JP), "类别" (CN) [cite: 6]
                     // 对应 'categories' -> 'categoriesId'
                     categories.addAll(extractTagLikeItems(groupChildren, ::getSingleElement))
                 }
 
-                "キャラクター" -> {
-                    // 对应 'characters' -> 'charactersId'
-                    Log.d(TAG, "[7-Details] 正在解析 'キャラクター'...")
+                "キャラクター", "角色", "Characters" -> { // "キャラクター" (JP), "角色" (CN) [cite: 2]
+                    Log.d(TAG, "[7-Details] 正在解析 '角色' (Characters)...")
                     val charactersArray: JSONArray
                     val firstValue = groupChildren.optJSONArray(1)
 
                     // 检查是 "嵌套" 结构还是 "扁平" 结构
                     if (groupChildren.length() == 2 && firstValue != null) {
-                        Log.d(TAG, "[7-Details] 检测到 'キャラクター' 为嵌套结构。")
+                        Log.d(TAG, "[7-Details] 检测到 '角色' 为嵌套结构。")
                         charactersArray = firstValue
                     } else {
-                        Log.d(TAG, "[7-Details] 检测到 'キャラクター' 为扁平结构。")
+                        Log.d(TAG, "[7-Details] 检测到 '角色' 为扁平结构。")
                         charactersArray = JSONArray()
                         // 从索引 1 开始循环，获取所有后续条目
                         for (j in 1 until groupChildren.length()) {
@@ -215,12 +214,12 @@ internal fun parseComicDetails(detailsObject: JSONObject, comics: MutableList<Co
                                 }
                             }
                         } catch (e: Exception) {
-                            Log.w(TAG, "[7-Details] 解析单个 'キャラクター' 失败 at index $j: ${e.message}")
+                            Log.w(TAG, "[7-Details] 解析单个 '角色' 失败 at index $j: ${e.message}")
                             // 继续处理下一个角色，不要中断
                             continue
                         }
                     }
-                    Log.i(TAG, "[7-Details] 'キャラクター' 解析完成，共 ${characters.size} 个。")
+                    Log.i(TAG, "[7-Details] '角色' 解析完成，共 ${characters.size} 个。")
                 }
             }
             // --- 【修改结束】---
@@ -298,11 +297,11 @@ private fun extractTagLikeItems(
             if (elementType == "\$L12") {
                 val elementContainer = innerValueArray.optJSONObject(3) ?: continue
 
-                // 解析 ID (e.g., "/artists/24889" -> "24889") 
+                // 解析 ID (e.g., "/artists/24889" -> "24889")
                 val href = elementContainer.optString("href")
                 val tagId = href.split("/").lastOrNull() ?: ""
 
-                // 解析 Name (e.g., "春菊天うどん") 
+                // 解析 Name (e.g., "春菊天うどん")
                 val childrenArray = elementContainer.optJSONArray("children") ?: continue
                 val element = getSingleElement(childrenArray)
                 val tagName = element.optJSONObject(3)

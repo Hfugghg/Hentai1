@@ -86,7 +86,8 @@ class DetailViewModel(application: Application, private val comicId: String) : A
                 comicId = comicId,
                 title = comic.title,
                 timestamp = System.currentTimeMillis(),
-                folderId = folder.id
+                folderId = folder.id,
+                language = NetworkUtils.getCurrentSite().name
             )
             favoriteDao.insert(favorite)
             checkIfFavorite()
@@ -101,7 +102,8 @@ class DetailViewModel(application: Application, private val comicId: String) : A
                 comicId = comicId,
                 title = comic.title,
                 timestamp = System.currentTimeMillis(),
-                folderId = newFolderId
+                folderId = newFolderId,
+                language = NetworkUtils.getCurrentSite().name
             )
             favoriteDao.insert(favorite)
             checkIfFavorite()

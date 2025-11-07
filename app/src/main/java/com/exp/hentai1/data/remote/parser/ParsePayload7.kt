@@ -73,108 +73,157 @@ fun parsePayload7(payload: String): List<Comic> {
                     Log.w(TAG, "[7] 无法解析列表标题 (可能为新着列表): ${e.message}")
                 }
 
+                // 【修改】使用更通用的关键词来判断是否为排行榜
+                // 将标题转为小写以进行不区分大小写的比较
+                val normalizedTitle = listTitle.lowercase()
+                val isRankingList = normalizedTitle.contains("人気") || // 日语
+                        normalizedTitle.contains("受欢迎") || // 中文
+                        normalizedTitle.contains("popular")   // 英语
 
-                if (listTitle.contains("人気")) {
+                if (isRankingList) {
                     // 结构 3: 漫画排行列表 (Popular)
                     Log.i(TAG, "[7] 检测到 [漫画排行列表] 结构 (Title: $listTitle)。")
                     parseComicRankList(firstElementArray, comics)
                 } else {
                     // 结构 1: 漫画列表 (原有逻辑 - "New")
-                    Log.i(TAG, "[7] 检测到 [新着漫画列表] 结构 (JSONArray)。")
+                    Log.i(TAG, "[7] 检测到 [新着漫画列表] 结构 (Title: '$listTitle', 未匹配到排行关键词)。")
                     parseComicList(secondElement, comics)
                 }
             }
 
             is String -> {
-                // 【修改】结构 2 (详情页) 或 结构 4 (搜索页)
-                // 两者的 secondElement 都可能是 "div"
+                // 【修改】结构 2 (详情页) 或 结构 4 (搜索/列表页)
+                // 优先通过结构 (寻找 grid container) 来判断，而不是 H1 标题内容
 
-                var pageTitle = ""
-                var isSearchPage = false
+                var isListPage = false
+                var gridContainer: JSONArray? = null
+                val rootObject = topArray.optJSONObject(3) // {"className":"space-y-10", ...}
+                val childrenArray = rootObject?.optJSONArray("children")
 
-                try {
-                    // 尝试按 [搜索页] 结构解析H1标题
-                    pageTitle = topArray.getJSONObject(3) // {"className":"space-y-10", "children": [...]}
-                        .getJSONArray("children") // [ [HEADER_DIV], [GRID_DIV] ]
-                        .getJSONArray(0) // [HEADER_DIV] = ["$", "div", {"className":"container..."}]
-                        .getJSONObject(3) // {"className":"container...", "children": [...]}
-                        .getJSONArray("children") // [ [H1], [BUTTON_DIV] ]
-                        .getJSONArray(0) // [H1] = ["$", "h1", {"className":"..."}]
-                        .getJSONObject(3) // {"className":"...", "children": "..."}
-                        .getString("children") // "「...」のエロ漫画・エロ同人誌"
+                if (childrenArray != null) {
 
-                    // 通过标题特征词判断是否为搜索页
-                    if (pageTitle.contains("のエロ漫画・エロ同人誌")) {
-                        isSearchPage = true
-                    }
-                } catch (e: Exception) {
-                    // 解析标题失败，说明不是搜索页，假定为详情页
-                    Log.d(TAG, "[7] 标题解析失败，假定为详情页 (非Search): ${e.message}")
-                }
-
-                if (isSearchPage) {
-                    // 结构 4: 漫画搜索页
-                    Log.i(TAG, "[7] 检测到 [漫画搜索列表] 结构 (Title: $pageTitle)。")
-
-                    val childrenArray = topArray.optJSONObject(3)?.optJSONArray("children")
-                    var gridContainer: JSONArray? = null
-
-                    if (childrenArray != null) {
-                        // 【修复】正确的 grid container 路径
-                        // 从 New 1.txt 可以看到结构：childrenArray[0] -> container -> children[2] -> grid
+                    // --- 【新增】检查 "无结果" 页面 ---
+                    // "无结果" 页面没有 grid, 只有一个 h1 作为第一个子元素
+                    if (childrenArray.length() > 0) {
                         try {
-                            val containerDiv = childrenArray.getJSONArray(0) // 第一个 div (container)
-                            val containerChildren = containerDiv.getJSONObject(3).getJSONArray("children")
+                            val firstChild = childrenArray.optJSONArray(0)
+                            // 检查第一个子元素是否为 H1
+                            if (firstChild != null && "h1" == firstChild.optString(1)) {
+                                val h1Children = firstChild.optJSONObject(3)?.optJSONArray("children")
+                                // 检查 H1 的子元素(文本)
+                                if (h1Children != null && h1Children.length() > 0) {
+                                    val h1Text = h1Children.optString(0, "").lowercase()
+                                    // 检查是否包含 "无结果" 关键词
+                                    if (h1Text.contains("見つかりませんでした") || // JP
+                                        h1Text.contains("没有找到搜索结果") ||     // CN
+                                        h1Text.contains("no results found")) {   // EN
 
-                            // 遍历 container 的 children 寻找 grid
-                            for (i in 0 until containerChildren.length()) {
-                                val child = containerChildren.optJSONArray(i)
-                                if (child != null) {
-                                    val className = child.optJSONObject(3)?.optString("className", "") ?: ""
-                                    if (className.contains("grid")) {
-                                        gridContainer = child
-                                        Log.d(TAG, "[7-Search] 在 container 索引 $i 处找到 grid container。")
-                                        break
+                                        Log.i(TAG, "[7] 检测到 [漫画搜索/列表页 - 无结果] 结构。")
+                                        isListPage = true
+                                        // gridContainer 保持为 null, 因为没有结果
                                     }
                                 }
                             }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "[7] 结构检测: 检查 '无结果' H1 时出错: ${e.message}")
+                        }
+                    }
 
-                            // 如果上面没找到，尝试直接取索引 2（根据 New 1.txt 结构）
-                            if (gridContainer == null && containerChildren.length() > 2) {
-                                gridContainer = containerChildren.optJSONArray(2)
-                                if (gridContainer != null) {
-                                    Log.d(TAG, "[7-Search] 通过固定索引 2 找到 grid container。")
+                    // --- 尝试寻找 Grid Container ---
+                    // 只有在尚未确定为 "无结果" 页面时才需要寻找 grid
+                    if (!isListPage) {
+                        // 尝试 1: 检查 children[1] (新结构, 如中文/英文列表页)
+                        if (childrenArray.length() > 1) {
+                            val potentialGrid = childrenArray.optJSONArray(1)
+                            if (potentialGrid != null) {
+                                val gridClassName = potentialGrid.optJSONObject(3)?.optString("className", "") ?: ""
+                                if (gridClassName.contains("grid")) {
+                                    gridContainer = potentialGrid
+                                    isListPage = true
+                                    Log.d(TAG, "[7] 结构检测: 在 children[1] 找到 grid container。")
                                 }
                             }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "[7-Search] 解析 container 结构失败: ${e.message}")
                         }
-                    }
 
-                    if (gridContainer != null) {
-                        parseComicSearchList(gridContainer, comics)
-                    } else {
-                        Log.e(TAG, "[7-Search] grid container (className=grid) 未找到！")
-                        // 【调试】打印结构信息
-                        Log.d(TAG, "[7-Search] childrenArray 长度: ${childrenArray?.length()}")
-                        if (childrenArray != null && childrenArray.length() > 0) {
-                            val firstChild = childrenArray.optJSONArray(0)
-                            if (firstChild != null) {
-                                val firstChildClassName = firstChild.optJSONObject(3)?.optString("className", "")
-                                Log.d(TAG, "[7-Search] 第一个 child 的 className: $firstChildClassName")
+                        // 尝试 2: 检查 children[0] 内部 (旧结构, 如日文搜索页)
+                        if (!isListPage && childrenArray.length() > 0) {
+                            try {
+                                Log.d(TAG, "[7] 结构检测: children[1] 未命中, 尝试解析 children[0] 内部...")
+                                val containerDiv = childrenArray.optJSONArray(0) // 第一个 div (container)
+                                val containerChildren = containerDiv?.getJSONObject(3)?.getJSONArray("children")
+
+                                if (containerChildren != null) {
+                                    // 遍历 container 的 children 寻找 grid
+                                    for (i in 0 until containerChildren.length()) {
+                                        val child = containerChildren.optJSONArray(i)
+                                        if (child != null) {
+                                            val className = child.optJSONObject(3)?.optString("className", "") ?: ""
+                                            if (className.contains("grid")) {
+                                                gridContainer = child
+                                                isListPage = true
+                                                Log.d(TAG, "[7] 结构检测: 在 children[0] 内部索引 $i 处找到 grid。")
+                                                break
+                                            }
+                                        }
+                                    }
+
+                                    // 回退: 尝试固定索引 2 (旧结构)
+                                    if (!isListPage && containerChildren.length() > 2) {
+                                        val fallbackGrid = containerChildren.optJSONArray(2)
+                                        val fallbackClassName = fallbackGrid?.optJSONObject(3)?.optString("className", "") ?: ""
+                                        if (fallbackGrid != null && fallbackClassName.contains("grid")) {
+                                            gridContainer = fallbackGrid
+                                            isListPage = true
+                                            Log.d(TAG, "[7] 结构检测: 通过 children[0] 内部固定索引 2 找到 grid。")
+                                        }
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.d(TAG, "[7] 结构检测: 尝试解析 children[0] 内部 grid 失败: ${e.message}")
                             }
                         }
                     }
-                }else {
+                }
+
+                // --- 根据检测结果分派 ---
+
+                // 【修改】如果 isListPage 为 true, 则认为是列表页 (可能有 grid, 也可能无结果)
+                if (isListPage) {
+
+                    if (gridContainer != null) {
+                        // 结构 4: 漫画搜索/列表页 (有结果)
+                        Log.i(TAG, "[7] 检测到 [漫画搜索/列表页] 结构 (基于 grid)。")
+
+                        // (可选) 尝试解析 H1 标题用于日志记录
+                        try {
+                            val pageTitle = topArray.getJSONObject(3)
+                                .getJSONArray("children")
+                                .getJSONArray(0) // [HEADER_DIV]
+                                .getJSONObject(3)
+                                .getJSONArray("children")
+                                .getJSONArray(0) // [H1]
+                                .getJSONObject(3)
+                                .getString("children")
+                            Log.d(TAG, "[7-List] 页面标题: $pageTitle")
+                        } catch (_: Exception) {
+                            // 标题解析失败不影响列表解析
+                        }
+
+                        parseComicSearchList(gridContainer, comics)
+                    } else {
+                        // 结构 4: 漫画搜索/列表页 (无结果)
+                        // H1 检查已将 isListPage 设为 true, 但 gridContainer 为 null
+                        Log.i(TAG, "[7] 检测到 [漫画搜索/列表页], 但无 grid (无结果)。")
+                        // 不需要解析, comics 列表将为空, 这是正确的
+                    }
+
+                } else {
                     // 结构 2: 漫画详情页
-                    Log.i(TAG, "[7] 检测到 [漫画详情页] 结构。")
+                    Log.i(TAG, "[7] 未找到 grid/无结果H1，检测为 [漫画详情页] 结构。")
 
-                    // parseComicDetails 期望传入 {"className":"space-y-10", "children": [...]}
-                    val detailsObject = topArray.optJSONObject(3)
-
-                    if (detailsObject != null) {
+                    if (rootObject != null) {
                         // 调用您已经写好的详情页解析器
-                        parseComicDetails(detailsObject, comics)
+                        parseComicDetails(rootObject, comics)
                     } else {
                         Log.e(TAG, "[7-Details] 无法提取详情页的 'detailsObject' (topArray[3])。")
                     }

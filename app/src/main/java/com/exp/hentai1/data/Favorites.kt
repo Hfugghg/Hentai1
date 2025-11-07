@@ -20,5 +20,6 @@ data class Favorite(
     @PrimaryKey val comicId: String,
     val title: String,
     val timestamp: Long,
-    val folderId: Long?
+    val folderId: Long?,
+    val language: String
 )

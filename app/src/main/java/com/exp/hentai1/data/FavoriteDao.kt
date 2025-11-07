@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface FavoriteDao {
@@ -21,4 +22,7 @@ interface FavoriteDao {
 
     @Query("DELETE FROM favorites WHERE comicId IN (:comicIds)")
     suspend fun deleteByIds(comicIds: List<String>)
+
+    @Query("SELECT * FROM favorites WHERE folderId = :folderId")
+    fun getFavoritesByFolderId(folderId: Long): Flow<List<Favorite>>
 }

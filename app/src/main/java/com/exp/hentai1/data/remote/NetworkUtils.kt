@@ -17,7 +17,31 @@ import java.net.URLEncoder
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+enum class HentaiOneSite(val baseUrl: String) {
+    // 日语
+    MAIN("https://hentai-one.com"),
+    // 中文
+    CHINESE("https://ch.hentai-one.com"),
+    // 英文
+    ENGLISH("https://en.hentai-one.com")
+}
+
 object NetworkUtils {
+
+    const val GITHUB_RELEASE_URL = "https://api.github.com/repos/Hfugghg/Hentai1/releases/latest"
+
+    private var currentSite = HentaiOneSite.MAIN
+
+    fun setSite(site: HentaiOneSite) {
+        currentSite = site
+    }
+
+    fun getCurrentSite(): HentaiOneSite {
+        return currentSite
+    }
+
+    private val baseUrl: String
+        get() = currentSite.baseUrl
 
     // 一个持久化的OkHttpClient，与WebView共享Cookie
     private val client: OkHttpClient by lazy {
@@ -117,7 +141,7 @@ object NetworkUtils {
         }
 
     private fun buildEntityUrl(entity: String, id: Any, popular: Boolean = false, page: Int = 1): String {
-        val baseUrl = "https://hentai-one.com/$entity/$id"
+        val url = "$baseUrl/$entity/$id"
         val queryParams = mutableListOf<String>()
         if (popular) {
             queryParams.add("type=popular")
@@ -126,43 +150,43 @@ object NetworkUtils {
             queryParams.add("page=$page")
         }
         return if (queryParams.isEmpty()) {
-            baseUrl
+            url
         } else {
-            "$baseUrl?${queryParams.joinToString("&")}"
+            "$url?${queryParams.joinToString("&")}"
         }
     }
 
     fun searchUrl(keyword: String, popular: Boolean = false, page: Int = 1): String {
         val popularParam = if (popular) "&type=popular" else ""
-        return "https://hentai-one.com/articles/search?keyword=${URLEncoder.encode(keyword, "UTF-8")}$popularParam&page=$page"
+        return "$baseUrl/articles/search?keyword=${URLEncoder.encode(keyword, "UTF-8")}$popularParam&page=$page"
     }
 
     fun detailUrl(comicId: String): String {
-        return "https://hentai-one.com/articles/$comicId"
+        return "$baseUrl/articles/$comicId"
     }
 
     fun viewerUrl(comicId: String, page: Int = 1): String {
-        return "https://hentai-one.com/viewer?articleId=$comicId&page=$page"
+        return "$baseUrl/viewer?articleId=$comicId&page=$page"
     }
 
     fun daylyRankUrl(page: Int = 1): String {
-        return "https://hentai-one.com/articles/rank?t=daily&page=$page"
+        return "$baseUrl/articles/rank?t=daily&page=$page"
     }
 
     fun weeklyRankUrl(page: Int = 1): String {
-        return "https://hentai-one.com/articles/rank?t=weekly&page=$page"
+        return "$baseUrl/articles/rank?t=weekly&page=$page"
     }
 
     fun monthlyRankUrl(page: Int = 1): String {
-        return "https://hentai-one.com/articles/rank?t=monthly&page=$page"
+        return "$baseUrl/articles/rank?t=monthly&page=$page"
     }
 
     fun allTimeRankUrl(page: Int = 1): String {
-        return "https://hentai-one.com/articles/rank?t=all_time&page=$page"
+        return "$baseUrl/articles/rank?t=all_time&page=$page"
     }
 
     fun latestUrl(page: Int = 1): String {
-        return if (page == 1) "https://hentai-one.com/" else "https://hentai-one.com/?page=$page"
+        return if (page == 1) baseUrl else "$baseUrl/?page=$page"
     }
 
     fun tagUrl(tagId: String, popular: Boolean = false, page: Int = 1): String {

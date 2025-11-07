@@ -29,7 +29,10 @@ data class FavoritesUiState(
     // 管理模式状态
     val isManagementMode: Boolean = false,
     // 选中的漫画ID集合
-    val selectedComicIds: Set<String> = emptySet()
+    val selectedComicIds: Set<String> = emptySet(),
+    // 滚动位置
+    val listScrollPosition: Int = 0,
+    val listScrollOffset: Int = 0
 )
 
 class FavoritesViewModel(application: Application) : AndroidViewModel(application) {
@@ -42,6 +45,7 @@ class FavoritesViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun loadFavorites() {
         viewModelScope.launch {
+            val currentExpansionState = _uiState.value.favoriteGroups.associate { (it.folder?.id) to it.isExpanded }
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val folders = favoriteFolderDao.getAllFavoriteFolders().first()
@@ -52,7 +56,11 @@ class FavoritesViewModel(application: Application) : AndroidViewModel(applicatio
                     val comicsInFolder = (favoritesByFolderId[folder.id] ?: emptyList())
                         .map(::mapFavoriteToComic)
                         .sortedByDescending { it.timestamp }
-                    FavoriteGroup(folder = folder, comics = comicsInFolder)
+                    FavoriteGroup(
+                        folder = folder,
+                        comics = comicsInFolder,
+                        isExpanded = currentExpansionState[folder.id] ?: false
+                    )
                 }
 
                 val uncategorizedComics = (favoritesByFolderId[null] ?: emptyList())
@@ -61,7 +69,13 @@ class FavoritesViewModel(application: Application) : AndroidViewModel(applicatio
 
                 val allGroups = mutableListOf<FavoriteGroup>()
                 if (uncategorizedComics.isNotEmpty()) {
-                    allGroups.add(FavoriteGroup(folder = null, comics = uncategorizedComics))
+                    allGroups.add(
+                        FavoriteGroup(
+                            folder = null,
+                            comics = uncategorizedComics,
+                            isExpanded = currentExpansionState[null] ?: true // 默认展开未分类
+                        )
+                    )
                 }
                 allGroups.addAll(groups)
 
@@ -116,7 +130,17 @@ class FavoritesViewModel(application: Application) : AndroidViewModel(applicatio
             val idsToDelete = _uiState.value.selectedComicIds
             if (idsToDelete.isEmpty()) return@launch
 
+            // 1. 删除选中的漫画
             favoriteDao.deleteByIds(idsToDelete.toList())
+
+            // 2. 检查并删除空收藏夹
+            val allFolders = favoriteFolderDao.getAllFavoriteFolders().first()
+            for (folder in allFolders) {
+                val comicsInFolder = favoriteDao.getFavoritesByFolderId(folder.id).first()
+                if (comicsInFolder.isEmpty()) {
+                    favoriteFolderDao.deleteFolder(folder)
+                }
+            }
 
             // 退出管理模式并刷新列表
             _uiState.update { it.copy(selectedComicIds = emptySet(), isManagementMode = false) }
@@ -141,6 +165,10 @@ class FavoritesViewModel(application: Application) : AndroidViewModel(applicatio
         }
         _uiState.update { it.copy(favoriteGroups = updatedGroups) }
     }
+    
+    fun saveScrollState(position: Int, offset: Int) {
+        _uiState.update { it.copy(listScrollPosition = position, listScrollOffset = offset) }
+    }
 
     private fun mapFavoriteToComic(favorite: Favorite): Comic {
         return Comic(
@@ -155,7 +183,8 @@ class FavoritesViewModel(application: Application) : AndroidViewModel(applicatio
             languages = emptyList(),
             categories = emptyList(),
             imageList = emptyList(),
-            timestamp = favorite.timestamp
+            timestamp = favorite.timestamp,
+            language = favorite.language
         )
     }
 }

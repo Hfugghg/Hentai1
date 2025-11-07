@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Favorite::class, FavoriteFolder::class], version = 2)
+@Database(entities = [Favorite::class, FavoriteFolder::class], version = 3)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun favoriteDao(): FavoriteDao
     abstract fun favoriteFolderDao(): FavoriteFolderDao
@@ -22,7 +22,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "app_database"
-                ).addMigrations(MIGRATION_1_2).build()
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
                 INSTANCE = instance
                 instance
             }
@@ -61,6 +61,12 @@ abstract class AppDatabase : RoomDatabase() {
 
                 // 8. 删除临时表
                 database.execSQL("DROP TABLE `favorites_temp`")
+            }
+        }
+
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `favorites` ADD COLUMN `language` TEXT NOT NULL DEFAULT 'MAIN'")
             }
         }
     }

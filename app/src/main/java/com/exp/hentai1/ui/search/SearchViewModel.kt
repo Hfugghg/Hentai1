@@ -26,7 +26,9 @@ data class SearchCategoryState(
     val error: String? = null,
     val currentPage: Int = 1,
     val canLoadMore: Boolean = true,
-    val isLoadingMore: Boolean = false
+    val isLoadingMore: Boolean = false,
+    val firstVisibleItemIndex: Int = 0,
+    val firstVisibleItemScrollOffset: Int = 0
 )
 
 data class SearchUiState(
@@ -40,6 +42,20 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
     private var currentQuery: String = ""
+
+    fun onScrollPositionChanged(type: SearchType, index: Int, offset: Int) {
+        _uiState.update { currentState ->
+            val categoryState = currentState.searchResults[type] ?: return@update currentState
+            val updatedCategoryState = categoryState.copy(
+                firstVisibleItemIndex = index,
+                firstVisibleItemScrollOffset = offset
+            )
+            val updatedSearchResults = currentState.searchResults.toMutableMap().apply {
+                this[type] = updatedCategoryState
+            }
+            currentState.copy(searchResults = updatedSearchResults)
+        }
+    }
 
     fun setQuery(query: String) {
         if (currentQuery == query) return

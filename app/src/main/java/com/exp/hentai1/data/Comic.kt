@@ -26,5 +26,10 @@ data class Comic(
     // --- 【修改结束】---
 
     val imageList: List<String> = emptyList(),
-    val timestamp: Long = 0
+    val timestamp: Long = 0,
+
+    // 【新增】添加这两个字段
+    val isError: Boolean = false,
+    val errorInfo: String? = null,
+    val language: String = "MAIN"
 )
