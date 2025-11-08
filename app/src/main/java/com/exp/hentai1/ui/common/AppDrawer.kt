@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -26,13 +25,30 @@ fun AppDrawer(
     onMenuClick: (String) -> Unit
 ) {
     val menuItems = listOf(
-        MenuItem("标签", Icons.AutoMirrored.Filled.List),
-        MenuItem("原作", Icons.Default.Create),
-        MenuItem("角色", Icons.Default.Person),
-        MenuItem("作者", Icons.Default.Person),
-        MenuItem("社团", Icons.Default.Person),
-        MenuItem("排行榜", Icons.Default.Star),
-        MenuItem("我的收藏", Icons.Default.Favorite),
+        // "标签": LocalOffer (核心库)
+        MenuItem("标签", Icons.Default.LocalOffer),
+
+        // "原作": AutoStories (扩展库)
+        // 修正：直接使用 Icons.Default.AutoStories
+        MenuItem("原作", Icons.Default.AutoStories),
+
+        // "角色": RecentActors (扩展库)
+        MenuItem("角色", Icons.Default.RecentActors),
+
+        // "作者": Brush (扩展库)
+        MenuItem("作者", Icons.Default.Brush),
+
+        // "团队": Group (核心库)
+        MenuItem("团队", Icons.Default.Group),
+
+        // "排行": Leaderboard (扩展库)
+        // 修正：直接使用 Icons.Default.Leaderboard
+        MenuItem("排行", Icons.Default.Leaderboard),
+
+        // "收藏": Favorite (核心库)
+        MenuItem("收藏", Icons.Default.Favorite),
+
+        // "设置": Settings (核心库)
         MenuItem("设置", Icons.Default.Settings)
     )
 

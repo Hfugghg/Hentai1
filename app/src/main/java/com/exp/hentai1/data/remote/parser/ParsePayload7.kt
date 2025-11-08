@@ -35,8 +35,7 @@ fun parsePayload7(payload: String): List<Comic> {
         // 检查顶层数组的第二个元素，以确定是哪种数据结构
         when (val secondElement = topArray.opt(1)) {
             is JSONArray -> {
-                // 列表结构 (新着 或 排行)
-                // 我们需要通过 topArray[0] 的标题来区分
+                // 列表结构 (新着、排行 或 类型列表)
                 var listTitle = ""
                 val firstElementArray = topArray.optJSONArray(0)
                 if (firstElementArray == null) {
@@ -46,6 +45,43 @@ fun parsePayload7(payload: String): List<Comic> {
                     parseComicList(secondElement, comics)
                     return comics
                 }
+
+                // --- 【新增】检查是否为 "类型数据列表" (Tags, Artists, etc.) ---
+                var isTypeList = false
+                try {
+                    // 结构: ["$", "div", null, {"className":"mx-auto mt-10 w-fit", ...}]
+                    val tag = firstElementArray.optString(1)
+                    val props = firstElementArray.optJSONObject(3)
+                    val className = props?.optString("className", "") ?: ""
+
+                    // 使用 className 作为主要判断依据
+                    if (tag == "div" && className == "mx-auto mt-10 w-fit") {
+                        // 进一步确认: 检查它是否包含两个 "a" 子元素
+                        val children = props?.optJSONArray("children")
+                        if (children != null && children.length() == 2) {
+                            val child1 = children.optJSONArray(0)
+                            val child2 = children.optJSONArray(1)
+                            // 确保子元素是 <a> 标签
+                            if (child1 != null && child1.optString(1) == "a" &&
+                                child2 != null && child2.optString(1) == "a"
+                            ) {
+                                isTypeList = true
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "[7] 检查 '类型数据列表' 头部时出错: ${e.message}")
+                }
+
+                if (isTypeList) {
+                    Log.i(TAG, "[7] 检测到 [类型数据列表] 结构 (如 Tags, Artists)。正在调用 parseTagsList...")
+                    val tags = parseTagsList(topArray)
+                    // 由于此页面不包含漫画，我们只记录日志并返回空列表
+                    Log.i(TAG, "[7] 类型列表解析完成，共找到 ${tags.size} 个类型。返回空漫画列表。")
+                    return emptyList() // 返回空的漫画列表
+                }
+
+                // --- 如果不是 "类型数据列表", 则继续执行 "新着/排行" 的逻辑 ---
 
                 try {
                     // 【修正】使用 getSingleElement 来正确解析标题

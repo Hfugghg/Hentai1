@@ -15,8 +15,12 @@ import org.json.JSONObject
  */
 fun parsePayload7ForTagSearch(payload: String): List<Comic> {
     Log.i(TAG, "--- [7-TagSearch] 开始解析 (Payload 长度: ${payload.length}) ---")
+    // 新增日志：打印原始 payload，用于调试
+    Log.v(TAG, "[7-TagSearch] 待解析的原始 payload: \n$payload")
     val comics = mutableListOf<Comic>()
     val jsonString = cleanPayloadString(payload)
+    // 新增日志：打印清理后的 jsonString，这是实际解析的 JSON
+    Log.v(TAG, "[7-TagSearch] 清理后的 JSON string: \n$jsonString")
 
     if (jsonString.isEmpty()) {
         Log.e(TAG, "[7-TagSearch] 清理后的 JSON 字符串为空。")

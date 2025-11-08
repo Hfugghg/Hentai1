@@ -189,8 +189,37 @@ object NetworkUtils {
         return if (page == 1) baseUrl else "$baseUrl/?page=$page"
     }
 
-    fun tagUrl(tagId: String, popular: Boolean = false, page: Int = 1): String {
-        return buildEntityUrl("tags", tagId, popular, page)
+    private fun buildListUrl(entity: String, popular: Boolean = false, page: Int = 1): String {
+        val path = if (popular) "/${entity}/popular" else "/${entity}"
+        val queryParams = mutableListOf<String>()
+        if (page > 1) {
+            queryParams.add("page=$page")
+        }
+        return if (queryParams.isEmpty()) {
+            "$baseUrl$path"
+        } else {
+            "$baseUrl$path?${queryParams.joinToString("&")}"
+        }
+    }
+
+    fun tagsUrl(popular: Boolean = false, page: Int = 1): String {
+        return buildListUrl("tags", popular, page)
+    }
+
+    fun parodiesUrl(popular: Boolean = false, page: Int = 1): String {
+        return buildListUrl("parodies", popular, page)
+    }
+
+    fun charactersUrl(popular: Boolean = false, page: Int = 1): String {
+        return buildListUrl("characters", popular, page)
+    }
+
+    fun artistsUrl(popular: Boolean = false, page: Int = 1): String {
+        return buildListUrl("artists", popular, page)
+    }
+
+    fun groupsUrl(popular: Boolean = false, page: Int = 1): String {
+        return buildListUrl("groups", popular, page)
     }
 
     fun thumbnailsUrl(comicId: String): String {
@@ -205,31 +234,31 @@ object NetworkUtils {
         }
     }
 
-    fun artistsUrl(artistId: Int, popular: Boolean = false, page: Int = 1): String {
+    fun artistUrl(artistId: Int, popular: Boolean = false, page: Int = 1): String {
         return buildEntityUrl("artists", artistId, popular, page)
     }
 
-    fun groupsUrl(groupsId: Int, popular: Boolean = false, page: Int = 1): String {
+    fun groupUrl(groupsId: Int, popular: Boolean = false, page: Int = 1): String {
         return buildEntityUrl("groups", groupsId, popular, page)
     }
 
-    fun parodiesUrl(parodiesId: Int, popular: Boolean = false, page: Int = 1): String {
+    fun parodyUrl(parodiesId: Int, popular: Boolean = false, page: Int = 1): String {
         return buildEntityUrl("parodies", parodiesId, popular, page)
     }
 
-    fun charactersUrl(charactersId: Int, popular: Boolean = false, page: Int = 1): String {
+    fun characterUrl(charactersId: Int, popular: Boolean = false, page: Int = 1): String {
         return buildEntityUrl("characters", charactersId, popular, page)
     }
 
-    fun tagsUrl(tagsId: Int, popular: Boolean = false, page: Int = 1): String {
+    fun tagUrl(tagsId: Int, popular: Boolean = false, page: Int = 1): String {
         return buildEntityUrl("tags", tagsId, popular, page)
     }
 
-    fun languagesUrl(languagesId: Int, popular: Boolean = false, page: Int = 1): String {
+    fun languageUrl(languagesId: Int, popular: Boolean = false, page: Int = 1): String {
         return buildEntityUrl("languages", languagesId, popular, page)
     }
 
-    fun categoriesUrl(categoriesId: Int, popular: Boolean = false, page: Int = 1): String {
+    fun categoryUrl(categoriesId: Int, popular: Boolean = false, page: Int = 1): String {
         return buildEntityUrl("categories", categoriesId, popular, page)
     }
 

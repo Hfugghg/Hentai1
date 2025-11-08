@@ -33,3 +33,13 @@ data class Comic(
     val errorInfo: String? = null,
     val language: String = "MAIN"
 )
+
+/**
+ * 定义一个数据类来存储解析后的标签信息
+ */
+data class TagInfo(
+    val name: String,       // 类型名
+    val englishName: String,
+    val category: String,   // 类型种类
+    val id: String          // 类型ID
+)

@@ -40,6 +40,7 @@ fun HomeScreen(
     onFavoritesClick: () -> Unit,
     onRankingMoreClick: () -> Unit,
     onSearch: (String) -> Unit,
+    onMenuClick: (String) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val currentSite by viewModel.currentSite.collectAsState()
@@ -108,9 +109,23 @@ fun HomeScreen(
         drawerContent = {
             ModalDrawerSheet {
                 AppDrawer(
-                    onMenuClick = {
+                    onMenuClick = { menuItemTitle ->
                         scope.launch {
                             drawerState.close()
+                        }
+                        val route = when (menuItemTitle) {
+                            "标签" -> "list/tags"
+                            "原作" -> "list/parodies"
+                            "角色" -> "list/characters"
+                            "作者" -> "list/artists"
+                            "团队" -> "list/groups"
+                            "排行" -> "rankingMore"
+                            "收藏" -> "favorites"
+                            "设置" -> "settings"
+                            else -> ""
+                        }
+                        if (route.isNotEmpty()) {
+                            onMenuClick(route)
                         }
                     }
                 )
@@ -263,7 +278,7 @@ fun HomeScreen(
                                             .padding(vertical = 16.dp),
                                         textAlign = TextAlign.Center
                                     )
-                                }
+                                 }
                             }
                         }
                     }

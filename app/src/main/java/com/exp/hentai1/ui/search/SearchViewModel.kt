@@ -116,13 +116,13 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     val isPopular = type == SearchType.Popular
 
                     when (tagType) {
-                        "artists" -> NetworkUtils.artistsUrl(tagId.toInt(), popular = isPopular, page = page)
-                        "groups" -> NetworkUtils.groupsUrl(tagId.toInt(), popular = isPopular, page = page)
-                        "parodies" -> NetworkUtils.parodiesUrl(tagId.toInt(), popular = isPopular, page = page)
-                        "characters" -> NetworkUtils.charactersUrl(tagId.toInt(), popular = isPopular, page = page)
-                        "tags" -> NetworkUtils.tagsUrl(tagId.toInt(), popular = isPopular, page = page)
-                        "languages" -> NetworkUtils.languagesUrl(tagId.toInt(), popular = isPopular, page = page)
-                        "categories" -> NetworkUtils.categoriesUrl(tagId.toInt(), popular = isPopular, page = page)
+                        "artists" -> NetworkUtils.artistUrl(tagId.toInt(), popular = isPopular, page = page)
+                        "groups" -> NetworkUtils.groupUrl(tagId.toInt(), popular = isPopular, page = page)
+                        "parodies" -> NetworkUtils.parodyUrl(tagId.toInt(), popular = isPopular, page = page)
+                        "characters" -> NetworkUtils.characterUrl(tagId.toInt(), popular = isPopular, page = page)
+                        "tags" -> NetworkUtils.tagUrl(tagId.toInt(), popular = isPopular, page = page)
+                        "languages" -> NetworkUtils.languageUrl(tagId.toInt(), popular = isPopular, page = page)
+                        "categories" -> NetworkUtils.categoryUrl(tagId.toInt(), popular = isPopular, page = page)
                         else -> NetworkUtils.searchUrl(currentQuery, popular = type == SearchType.Popular, page = page)
                     }
                 } else {

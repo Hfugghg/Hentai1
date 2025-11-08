@@ -22,14 +22,17 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.exp.hentai1.data.cache.AppCache
 import com.exp.hentai1.data.remote.NetworkUtils
 import com.exp.hentai1.ui.detail.DetailScreen
 import com.exp.hentai1.ui.favorites.FavoritesScreen
 import com.exp.hentai1.ui.home.HomeScreen
 import com.exp.hentai1.ui.home.HomeViewModel
+import com.exp.hentai1.ui.parseTags.ParseTagsScreen
 import com.exp.hentai1.ui.ranking.RankingMoreScreen
 import com.exp.hentai1.ui.reader.ReaderScreen
 import com.exp.hentai1.ui.search.SearchResultScreen
+import com.exp.hentai1.ui.settings.SettingsScreen
 import com.exp.hentai1.ui.theme.Hentai1Theme
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
@@ -53,6 +56,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        AppCache.initialize(this)
         setContent {
             Hentai1Theme {
                 Hentai1App(viewModel)
@@ -80,7 +84,8 @@ fun Hentai1App(viewModel: HomeViewModel) {
                     },
                     onFavoritesClick = { navController.navigate("favorites") },
                     onRankingMoreClick = { navController.navigate("rankingMore") },
-                    onSearch = { query -> navController.navigate("search/$query") }
+                    onSearch = { query -> navController.navigate("search/$query") },
+                    onMenuClick = { route -> navController.navigate(route) }
                 )
             }
             composable(
@@ -132,6 +137,23 @@ fun Hentai1App(viewModel: HomeViewModel) {
                         }
                     )
                 }
+            }
+            composable(
+                "list/{entityType}",
+                arguments = listOf(navArgument("entityType") { type = NavType.StringType })
+            ) {
+                val entityType = it.arguments?.getString("entityType")
+                if (entityType != null) {
+                    ParseTagsScreen(
+                        onTagClick = { query ->
+                            navController.navigate("search/$query")
+                        },
+                        entityType = entityType
+                    )
+                }
+            }
+            composable("settings") {
+                SettingsScreen()
             }
         }
     }

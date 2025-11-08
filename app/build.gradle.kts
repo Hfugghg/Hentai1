@@ -73,4 +73,9 @@ dependencies {
     kapt("androidx.room:room-compiler:2.8.3") // 请使用您 libs.versions.toml 中的最新版本
     implementation("androidx.room:room-ktx:2.8.3") // 请使用您 libs.versions.toml 中的最新版本
     implementation("com.google.code.gson:gson:2.13.2")
+
+    // 添加 Material 核心图标库
+    implementation(libs.androidx.compose.material.icons.core)
+    // 添加 Material 扩展图标库 (用于 Leaderboard, AutoStories 等)
+    implementation(libs.androidx.compose.material.icons.extended)
 }

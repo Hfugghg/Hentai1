@@ -7,10 +7,11 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Favorite::class, FavoriteFolder::class], version = 3)
+@Database(entities = [Favorite::class, FavoriteFolder::class, UserTag::class], version = 5)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun favoriteDao(): FavoriteDao
     abstract fun favoriteFolderDao(): FavoriteFolderDao
+    abstract fun userTagDao(): UserTagDao
 
     companion object {
         @Volatile
@@ -22,7 +23,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "app_database"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build()
                 INSTANCE = instance
                 instance
             }
@@ -67,6 +68,47 @@ abstract class AppDatabase : RoomDatabase() {
         private val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE `favorites` ADD COLUMN `language` TEXT NOT NULL DEFAULT 'MAIN'")
+            }
+        }
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("""
+            CREATE TABLE IF NOT EXISTS `blocked_tags` (
+                `id` TEXT NOT NULL, 
+                `name` TEXT NOT NULL, 
+                `englishName` TEXT NOT NULL, 
+                `category` TEXT NOT NULL, 
+                `timestamp` INTEGER NOT NULL, 
+                PRIMARY KEY(`id`)
+            )
+        """.trimIndent())
+            }
+        }
+
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // 1. Create the new table with the desired schema
+                database.execSQL("""
+            CREATE TABLE IF NOT EXISTS `user_tags` (
+                `id` TEXT NOT NULL, 
+                `name` TEXT NOT NULL, 
+                `englishName` TEXT NOT NULL, 
+                `category` TEXT NOT NULL, 
+                `timestamp` INTEGER NOT NULL, 
+                `type` INTEGER NOT NULL DEFAULT 0, 
+                PRIMARY KEY(`id`)
+            )
+        """.trimIndent())
+
+                // 2. Copy the data from the old table to the new table
+                database.execSQL("""
+            INSERT INTO `user_tags` (`id`, `name`, `englishName`, `category`, `timestamp`)
+            SELECT `id`, `name`, `englishName`, `category`, `timestamp` FROM `blocked_tags`
+        """.trimIndent())
+
+                // 3. Drop the old table
+                database.execSQL("DROP TABLE `blocked_tags`")
             }
         }
     }
