@@ -36,31 +36,36 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    var showDialog by remember { mutableStateOf(false) }
-    var newCacheSize by remember { mutableStateOf("") }
+    var showDiskCacheDialog by remember { mutableStateOf(false) }
+    var newDiskCacheSize by remember { mutableStateOf("") }
+
+    var showMemoryCacheDialog by remember { mutableStateOf(false) } // 新增：控制内存缓存设置弹窗
+    var newMemoryCachePercent by remember { mutableStateOf("") } // 新增：内存缓存百分比输入值
 
     // 屏幕首次组合时刷新缓存状态
     LaunchedEffect(Unit) {
         viewModel.refreshCacheState()
     }
 
-    if (showDialog) {
+    // 磁盘缓存设置弹窗
+    if (showDiskCacheDialog) {
         AlertDialog(
-            onDismissRequest = { showDialog = false },
+            onDismissRequest = { showDiskCacheDialog = false },
             title = { Text("设置磁盘缓存上限") },
             text = {
                 OutlinedTextField(
-                    value = newCacheSize,
-                    onValueChange = { newCacheSize = it.filter { c -> c.isDigit() } },
+                    value = newDiskCacheSize,
+                    onValueChange = { newDiskCacheSize = it.filter { c -> c.isDigit() } },
                     label = { Text("大小 (MB)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
                 )
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.onDiskCacheSizeChanged(newCacheSize)
-                        showDialog = false
+                        viewModel.onDiskCacheSizeChanged(newDiskCacheSize)
+                        showDiskCacheDialog = false
                         Toast.makeText(context, "设置已保存，重启应用后生效", Toast.LENGTH_SHORT).show()
                     }
                 ) {
@@ -68,7 +73,47 @@ fun SettingsScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDialog = false }) {
+                TextButton(onClick = { showDiskCacheDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    // 内存缓存设置弹窗
+    if (showMemoryCacheDialog) {
+        AlertDialog(
+            onDismissRequest = { showMemoryCacheDialog = false },
+            title = { Text("设置内存缓存百分比") },
+            text = {
+                OutlinedTextField(
+                    value = newMemoryCachePercent,
+                    onValueChange = { newValue ->
+                        newMemoryCachePercent = newValue.filter { it.isDigit() }
+                    },
+                    label = { Text("百分比 (%)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val percent = newMemoryCachePercent.toFloatOrNull()
+                        if (percent != null && percent >= 1 && percent <= 100) {
+                            viewModel.onMemoryCachePercentChanged((percent / 100f).toString()) // 转换为0.0-1.0
+                            showMemoryCacheDialog = false
+                            Toast.makeText(context, "设置已保存，重启应用后生效", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "请输入1到100之间的有效百分比", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Text("确认")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMemoryCacheDialog = false }) {
                     Text("取消")
                 }
             }
@@ -82,12 +127,17 @@ fun SettingsScreen(
         // 内存缓存
         Text("内存缓存 (快速读取)", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(8.dp))
-        CacheUsageBar(
-            currentSizeMB = uiState.memoryCacheSizeMB,
-            maxSizeMB = uiState.maxMemoryCacheSizeMB
-        )
+        Column(modifier = Modifier.clickable { // 添加点击事件
+            newMemoryCachePercent = (uiState.memoryCachePercent * 100).toInt().toString() // 预填充当前值
+            showMemoryCacheDialog = true
+        }) {
+            CacheUsageBar(
+                currentSizeMB = uiState.memoryCacheSizeMB,
+                maxSizeMB = uiState.maxMemoryCacheSizeMB
+            )
+        }
         Text(
-            "用于加速重复打开图片的读取速度，应用关闭后自动清空。",
+            "用于加速重复打开图片的读取速度，应用关闭后自动清空。点击上方可设置百分比，重启后生效。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp)
@@ -99,8 +149,8 @@ fun SettingsScreen(
         Text("磁盘缓存 (节省流量)", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(8.dp))
         Column(modifier = Modifier.clickable {
-            newCacheSize = uiState.maxDiskCacheSizeMB.toInt().toString() // 预填充当前值
-            showDialog = true
+            newDiskCacheSize = uiState.maxDiskCacheSizeMB.toInt().toString() // 预填充当前值
+            showDiskCacheDialog = true
         }) {
             CacheUsageBar(
                 currentSizeMB = uiState.diskCacheSizeMB,

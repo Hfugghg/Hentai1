@@ -33,7 +33,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.exp.hentai1.ui.home.LatestUpdateItem
+import com.exp.hentai1.ui.common.ComicCard
+import com.exp.hentai1.ui.common.ComicCardStyle
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
@@ -188,8 +189,9 @@ fun SearchResultScreen(
                         contentPadding = PaddingValues(vertical = 8.dp)
                     ) {
                         items(searchState.comics) { comic ->
-                            LatestUpdateItem(
+                            ComicCard(
                                 comic = comic,
+                                style = ComicCardStyle.LIST,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                 onComicClick = onComicClick
                             )

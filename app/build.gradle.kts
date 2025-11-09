@@ -61,6 +61,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.foundation.layout)
+    implementation(libs.androidx.work.runtime.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -78,4 +79,6 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.core)
     // 添加 Material 扩展图标库 (用于 Leaderboard, AutoStories 等)
     implementation(libs.androidx.compose.material.icons.extended)
+
+    implementation("androidx.compose.runtime:runtime-livedata:1.9.4")
 }

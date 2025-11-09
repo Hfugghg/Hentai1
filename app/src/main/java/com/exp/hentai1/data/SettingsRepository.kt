@@ -15,6 +15,14 @@ class SettingsRepository(context: Context) {
         return prefs.getLong(KEY_DISK_CACHE_SIZE, DEFAULT_DISK_CACHE_SIZE_MB)
     }
 
+    fun setMemoryCachePercent(percent: Float) {
+        prefs.edit().putFloat(KEY_MEMORY_CACHE_PERCENT, percent).apply()
+    }
+
+    fun getMemoryCachePercent(): Float {
+        return prefs.getFloat(KEY_MEMORY_CACHE_PERCENT, DEFAULT_MEMORY_CACHE_PERCENT)
+    }
+
     fun setLastClearLog(log: String) {
         prefs.edit().putString(KEY_LAST_CLEAR_LOG, log).apply()
     }
@@ -26,7 +34,9 @@ class SettingsRepository(context: Context) {
     companion object {
         private const val PREFS_NAME = "app_settings"
         private const val KEY_DISK_CACHE_SIZE = "disk_cache_size_mb"
+        private const val KEY_MEMORY_CACHE_PERCENT = "memory_cache_percent"
         private const val KEY_LAST_CLEAR_LOG = "last_clear_log"
         const val DEFAULT_DISK_CACHE_SIZE_MB = 500L // 500MB
+        const val DEFAULT_MEMORY_CACHE_PERCENT = 0.25f // 可用内存的 25%
     }
 }

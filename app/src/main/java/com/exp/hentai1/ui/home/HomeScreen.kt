@@ -20,13 +20,12 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.exp.hentai1.data.Comic
 import com.exp.hentai1.data.remote.HentaiOneSite
 import com.exp.hentai1.ui.common.AppDrawer
-import com.exp.hentai1.ui.common.singleClickable
+import com.exp.hentai1.ui.common.ComicCard
+import com.exp.hentai1.ui.common.ComicCardStyle
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
@@ -120,6 +119,7 @@ fun HomeScreen(
                             "作者" -> "list/artists"
                             "团队" -> "list/groups"
                             "排行" -> "rankingMore"
+                            "本地" -> "local"
                             "收藏" -> "favorites"
                             "设置" -> "settings"
                             else -> ""
@@ -228,6 +228,10 @@ fun HomeScreen(
                     }
 
                     else -> {
+                        // 为了防止因数据源中可能存在的重复ID导致应用崩溃，在渲染列表前先进行去重。
+                        val distinctRankingComics = uiState.rankingComics.distinctBy { it.id }
+                        val distinctLatestComics = uiState.latestComics.distinctBy { it.id }
+
                         LazyColumn(
                             modifier = modifier.fillMaxSize(),
                             state = currentMainListState // 将当前站点的列表状态传递给 LazyColumn
@@ -241,7 +245,7 @@ fun HomeScreen(
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 RankingSection(
-                                    comics = uiState.rankingComics,
+                                    comics = distinctRankingComics, // 使用去重后的列表
                                     onComicClick = onComicClick,
                                     rankingListState = currentRankingListState // 传递当前站点的排行列表状态
                                 )
@@ -255,7 +259,7 @@ fun HomeScreen(
 
                             // 每日更新 Section
                             latestUpdatesSection(
-                                comics = uiState.latestComics,
+                                comics = distinctLatestComics, // 使用去重后的列表
                                 onComicClick = onComicClick
                             )
 
@@ -269,7 +273,7 @@ fun HomeScreen(
                                             .fillMaxWidth()
                                             .padding(vertical = 16.dp)
                                     )
-                                } else if (!uiState.canLoadMore && uiState.latestComics.isNotEmpty()) {
+                                } else if (!uiState.canLoadMore && distinctLatestComics.isNotEmpty()) { // 使用去重后的列表进行判断
                                     Text(
                                         text = "没有更多了，主人~",
                                         style = MaterialTheme.typography.bodyMedium,
@@ -278,7 +282,7 @@ fun HomeScreen(
                                             .padding(vertical = 16.dp),
                                         textAlign = TextAlign.Center
                                     )
-                                 }
+                                }
                             }
                         }
                     }
@@ -377,13 +381,29 @@ fun RankingSection(comics: List<Comic>, onComicClick: (String) -> Unit, rankingL
             textAlign = TextAlign.Center
         )
     } else {
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            state = rankingListState // 使用从 HomeScreen 传递过来的独立列表状态
-        ) {
-            items(comics, key = { it.id }) { comic -> // 添加 key 参数
-                RankingComicItem(comic, onComicClick = onComicClick)
+        // 使用 BoxWithConstraints 来获取父容器的宽度信息
+        BoxWithConstraints {
+            val screenWidth = maxWidth
+            // 定义响应式断点
+            val cardWidth = if (screenWidth < 600.dp) {
+                100.dp // 手机竖屏等窄屏幕
+            } else {
+                140.dp // 平板或手机横屏等宽屏幕
+            }
+
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                state = rankingListState
+            ) {
+                items(comics, key = { it.id }) { comic ->
+                    ComicCard(
+                        comic = comic,
+                        style = ComicCardStyle.GRID,
+                        modifier = Modifier.width(cardWidth), // 应用动态计算的宽度
+                        onComicClick = onComicClick
+                    )
+                }
             }
         }
     }
@@ -397,7 +417,7 @@ private fun LazyListScope.latestUpdatesSection(
     onComicClick: (String) -> Unit
 ) {
     // 计算每个“页面”的起始索引，以便正确显示分页隔条
-    val comicsPerPage = 20 // 假设每页显示20个漫画，与后端逻辑或UI设计保持一致
+    val comicsPerPage = 30 // 假设每页显示30个漫画，与后端逻辑或UI设计保持一致
     val totalPages = (comics.size + comicsPerPage - 1) / comicsPerPage
 
     if (comics.isEmpty()) return
@@ -418,66 +438,12 @@ private fun LazyListScope.latestUpdatesSection(
             )
         }
         items(pageComics, key = { "latest-${it.id}" }) { comic -> // 为 key 添加前缀以避免与排行中的 key 冲突
-            LatestUpdateItem(
-                comic,
-                Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            ComicCard(
+                comic = comic,
+                style = ComicCardStyle.LIST,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 onComicClick = onComicClick
             )
-        }
-    }
-}
-
-
-@Composable
-fun RankingComicItem(comic: Comic, onComicClick: (String) -> Unit) {
-    Column(
-        modifier = Modifier
-            .width(100.dp)
-            .singleClickable { onComicClick(comic.id) }, // 使用 singleClickable
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        AsyncImage(
-            model = comic.coverUrl,
-            contentDescription = comic.title,
-            modifier = Modifier.size(100.dp, 150.dp)
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = comic.title,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
-fun LatestUpdateItem(comic: Comic, modifier: Modifier = Modifier, onComicClick: (String) -> Unit) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .singleClickable { onComicClick(comic.id) }, // 使用 singleClickable
-        verticalAlignment = Alignment.Top
-    ) {
-        AsyncImage(
-            model = comic.coverUrl,
-            contentDescription = comic.title,
-            modifier = Modifier
-                .width(100.dp)
-                .height(150.dp)
-        )
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = comic.title, style = MaterialTheme.typography.titleMedium)
-            Spacer(modifier = Modifier.height(4.dp))
-            // 修改此处，使用 languages 列表
-            val languageText = if (comic.languages.isNotEmpty()) {
-                comic.languages.joinToString { it.name }
-            } else {
-                "未知"
-            }
-            Text(text = "语言: $languageText", style = MaterialTheme.typography.bodySmall)
-            Spacer(modifier = Modifier.height(4.dp))
         }
     }
 }

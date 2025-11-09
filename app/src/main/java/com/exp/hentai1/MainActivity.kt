@@ -28,6 +28,7 @@ import com.exp.hentai1.ui.detail.DetailScreen
 import com.exp.hentai1.ui.favorites.FavoritesScreen
 import com.exp.hentai1.ui.home.HomeScreen
 import com.exp.hentai1.ui.home.HomeViewModel
+import com.exp.hentai1.ui.local.LocalScreen
 import com.exp.hentai1.ui.parseTags.ParseTagsScreen
 import com.exp.hentai1.ui.ranking.RankingMoreScreen
 import com.exp.hentai1.ui.reader.ReaderScreen
@@ -89,29 +90,38 @@ fun Hentai1App(viewModel: HomeViewModel) {
                 )
             }
             composable(
-                route = "detail/{comicId}",
-                arguments = listOf(navArgument("comicId") { type = NavType.StringType })
-            ) {
-                val comicId = it.arguments?.getString("comicId")
+                route = "detail/{comicId}?isLocal={isLocal}", // 修改路由，添加可选的 isLocal 参数
+                arguments = listOf(
+                    navArgument("comicId") { type = NavType.StringType },
+                    navArgument("isLocal") { type = NavType.BoolType; defaultValue = false } // 定义 isLocal 参数
+                )
+            ) { backStackEntry ->
+                val comicId = backStackEntry.arguments?.getString("comicId")
+                val isLocal = backStackEntry.arguments?.getBoolean("isLocal") ?: false // 获取 isLocal 参数
                 if (comicId != null) {
                     DetailScreen(
                         comicId = comicId,
-                        onNavigateToReader = { id ->
-                            navController.navigate("reader/$id")
+                        onNavigateToReader = { id, isLocalReader -> // 修改 onNavigateToReader 签名
+                            navController.navigate("reader/$id?isLocal=$isLocalReader") // 传递 isLocal 参数
                         },
                         onNavigateToTagSearch = { query ->
                             navController.navigate("search/$query")
-                        }
+                        },
+                        isLocal = isLocal // 传递 isLocal 参数
                     )
                 }
             }
             composable(
-                route = "reader/{comicId}",
-                arguments = listOf(navArgument("comicId") { type = NavType.StringType })
+                route = "reader/{comicId}?isLocal={isLocal}", // 修改路由，添加可选的 isLocal 参数
+                arguments = listOf(
+                    navArgument("comicId") { type = NavType.StringType },
+                    navArgument("isLocal") { type = NavType.BoolType; defaultValue = false } // 定义 isLocal 参数
+                )
             ) {
                 val comicId = it.arguments?.getString("comicId")
+                val isLocal = it.arguments?.getBoolean("isLocal") ?: false // 获取 isLocal 参数
                 if (comicId != null) {
-                    ReaderScreen(comicId = comicId)
+                    ReaderScreen(comicId = comicId, isLocal = isLocal) // 传递 isLocal 参数
                 }
             }
             composable("favorites") {
@@ -154,6 +164,14 @@ fun Hentai1App(viewModel: HomeViewModel) {
             }
             composable("settings") {
                 SettingsScreen()
+            }
+            composable("local") {
+                LocalScreen(
+                    onNavigateToDetail = { comicId ->
+                        // 修改导航，传递 isLocal = true
+                        navController.navigate("detail/$comicId?isLocal=true")
+                    }
+                )
             }
         }
     }

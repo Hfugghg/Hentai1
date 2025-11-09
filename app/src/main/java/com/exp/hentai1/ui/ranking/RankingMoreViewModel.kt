@@ -30,9 +30,15 @@ data class RankingCategoryState(
     val isLoadingMore: Boolean = false
 )
 
+data class ScrollState(
+    val index: Int = 0,
+    val offset: Int = 0
+)
+
 data class RankingUiState(
     val selectedType: RankingType = RankingType.Daily,
-    val rankings: Map<RankingType, RankingCategoryState> = RankingType.entries.associateWith { RankingCategoryState() }
+    val rankings: Map<RankingType, RankingCategoryState> = RankingType.entries.associateWith { RankingCategoryState() },
+    val scrollStates: Map<RankingType, ScrollState> = RankingType.entries.associateWith { ScrollState() }
 )
 
 class RankingMoreViewModel(application: Application) : AndroidViewModel(application) {
@@ -51,6 +57,14 @@ class RankingMoreViewModel(application: Application) : AndroidViewModel(applicat
         val newState = _uiState.value.rankings[type]
         if (newState != null && newState.comics.isEmpty() && newState.error == null) {
             loadRanking(type)
+        }
+    }
+
+    fun updateScrollState(type: RankingType, index: Int, offset: Int) {
+        _uiState.update { currentState ->
+            val newScrollStates = currentState.scrollStates.toMutableMap()
+            newScrollStates[type] = ScrollState(index, offset)
+            currentState.copy(scrollStates = newScrollStates)
         }
     }
 

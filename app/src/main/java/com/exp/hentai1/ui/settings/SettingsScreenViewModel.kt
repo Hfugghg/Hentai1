@@ -19,6 +19,7 @@ import java.util.Locale
 data class CacheUiState(
     val memoryCacheSizeMB: Float = 0f,
     val maxMemoryCacheSizeMB: Float = 0f,
+    val memoryCachePercent: Float = 0f, // 新增：内存缓存百分比
     val diskCacheSizeMB: Float = 0f,
     val maxDiskCacheSizeMB: Float = 0f,
     val lastClearLog: String = "从未清理过" // 添加上次清理日志字段
@@ -65,11 +66,20 @@ class SettingsScreenViewModel(application: Application) : AndroidViewModel(appli
         }
     }
 
+    fun onMemoryCachePercentChanged(newPercent: String) {
+        val percent = newPercent.toFloatOrNull()
+        if (percent != null && percent in 0.01f..1.00f) { // 限制在 1% 到 100% 之间
+            settingsRepository.setMemoryCachePercent(percent)
+            refreshCacheState()
+        }
+    }
+
     fun refreshCacheState() {
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.value = CacheUiState(
                 memoryCacheSizeMB = AppCache.getMemoryCacheSizeInMB(),
                 maxMemoryCacheSizeMB = AppCache.getMaxMemoryCacheSizeInMB(),
+                memoryCachePercent = AppCache.getMemoryCachePercent(), // 获取内存缓存百分比
                 diskCacheSizeMB = AppCache.getDiskCacheSizeInMB(),
                 maxDiskCacheSizeMB = settingsRepository.getDiskCacheSize().toFloat(),
                 lastClearLog = settingsRepository.getLastClearLog() // 从仓库读取并更新

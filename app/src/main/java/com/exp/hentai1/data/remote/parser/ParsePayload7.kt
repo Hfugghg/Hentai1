@@ -42,7 +42,10 @@ fun parsePayload7(payload: String): List<Comic> {
                     Log.e(TAG, "[7] 列表结构检测到，但 topArray[0] 不是 JSONArray。")
                     // 回退到原有逻辑
                     Log.i(TAG, "[7] 回退到 [新着漫画列表] 逻辑。")
-                    parseComicList(secondElement, comics)
+
+                    // 必须传递 topArray 才能解析分页
+                    // 原始: parseComicList(secondElement, comics)
+                    parseComicList(topArray, comics)
                     return comics
                 }
 
@@ -123,7 +126,10 @@ fun parsePayload7(payload: String): List<Comic> {
                 } else {
                     // 结构 1: 漫画列表 (原有逻辑 - "New")
                     Log.i(TAG, "[7] 检测到 [新着漫画列表] 结构 (Title: '$listTitle', 未匹配到排行关键词)。")
-                    parseComicList(secondElement, comics)
+
+                    // 必须传递 topArray 才能解析分页
+                    // 原始: parseComicList(secondElement, comics)
+                    parseComicList(topArray, comics)
                 }
             }
 

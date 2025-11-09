@@ -3,8 +3,8 @@ package com.exp.hentai1.ui.ranking
 import android.app.Application
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -13,9 +13,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.exp.hentai1.ui.home.LatestUpdateItem
+import com.exp.hentai1.ui.common.ComicCard
+import com.exp.hentai1.ui.common.ComicCardStyle
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,18 +32,35 @@ fun RankingMoreScreen(
     val selectedType = uiState.selectedType
     val rankingState = uiState.rankings[selectedType]!!
 
-    val listStates = remember {
-        RankingType.entries.associateWith { LazyListState() }
-    }
+    val listStates = RankingType.entries.associateWith { rememberLazyListState() }
     val listState = listStates[selectedType]!!
+
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .filter { it != null && it >= listState.layoutInfo.totalItemsCount - 5 }
             .distinctUntilChanged()
-            .collect { 
+            .collect {
                 viewModel.loadMore()
             }
+    }
+
+    LaunchedEffect(selectedType) {
+        val scrollState = uiState.scrollStates[selectedType]
+        if (scrollState != null) {
+            coroutineScope.launch {
+                listState.scrollToItem(scrollState.index, scrollState.offset)
+            }
+        }
+    }
+
+    DisposableEffect(selectedType) {
+        onDispose {
+            val scrollState = listState.firstVisibleItemIndex
+            val scrollOffset = listState.firstVisibleItemScrollOffset
+            viewModel.updateScrollState(selectedType, scrollState, scrollOffset)
+        }
     }
 
     Scaffold(
@@ -99,8 +118,9 @@ fun RankingMoreScreen(
                         contentPadding = PaddingValues(vertical = 8.dp)
                     ) {
                         items(rankingState.comics) { comic ->
-                            LatestUpdateItem(
+                            ComicCard(
                                 comic = comic,
+                                style = ComicCardStyle.LIST,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                 onComicClick = onComicClick
                             )

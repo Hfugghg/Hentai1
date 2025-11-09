@@ -8,12 +8,41 @@ import org.json.JSONArray
 
 /**
  * 解析 [每日更新列表] 结构 (原 parsePayload7 逻辑)
+ *
+ * @param secondElementArray 传入的 JSON 数组。
+ * (注意：为了解析 lastPage，此参数【必须】是【根数组】)
+ * @param comics (out) 这是一个输出参数，函数将把解析到的漫画对象添加到这个 MutableList 中
+ * @return 最后一页的页码 (Int?)，如果解析失败则返回 null
  */
-internal fun parseComicList(secondElementArray: JSONArray, comics: MutableList<Comic>) {
+internal fun parseComicList(secondElementArray: JSONArray, comics: MutableList<Comic>): Int? {
+//    // 添加一个打印完整secondElementArray的log,需要换行处理过大log
+//    val jsonString = secondElementArray.toString(2) // 使用缩进格式化JSON
+//    val tag = "ComicListDebug"
+//
+//    // 处理过长的日志，分段打印
+//    val maxLogLength = 4000
+//    if (jsonString.length <= maxLogLength) {
+//        Log.d(tag, "完整 secondElementArray: \n$jsonString")
+//    } else {
+//        Log.d(tag, "完整 secondElementArray (分段输出):")
+//        var i = 0
+//        while (i < jsonString.length) {
+//            val end = minOf(i + maxLogLength, jsonString.length)
+//            Log.d(tag, "分段 ${i / maxLogLength + 1}: ${jsonString.substring(i, end)}")
+//            i += maxLogLength
+//        }
+//    }
+
+    // --- 1. 解析漫画列表 (!!! 按照你的要求，原封不动地保留 !!!) ---
     try {
-        // 漫画列表数据位于第二个顶层元素（第二个 React 元素）的第四个位置
-        val articlesContainer = secondElementArray.getJSONObject(3)
+        // 既然 secondElementArray 是 根数组 (topArray),
+        // 那么漫画列表就在 根数组[1] (即 $L19 块)
+        val comicListBlock = secondElementArray.getJSONArray(1)
+
+        // 漫画列表数据位于 $L19 块的第四个位置 (index 3)
+        val articlesContainer = comicListBlock.getJSONObject(3)
         val articlesArray = articlesContainer.getJSONArray("articles")
+        // #################################
 
         Log.i(TAG, "[7-List] 找到 ${articlesArray.length()} 个新着漫画条目。")
 
@@ -47,7 +76,101 @@ internal fun parseComicList(secondElementArray: JSONArray, comics: MutableList<C
         }
     } catch (e: Exception) {
         Log.e(TAG, "[7-List] 解析漫画列表结构失败: ${e.message}", e)
+        // 警告：如果 'secondElementArray' 是根数组，这里会失败，这是预期的。
+        // ^^^ 这个警告现在是一个真正的错误了
     }
+
+    // --- 2. 解析 "Last Page" (添加了针对 null 错误的健壮性) ---
+    // (这部分逻辑现在是正确的，因为 secondElementArray 是 根数组)
+    var lastPage: Int? = null
+    try {
+        // nav 元素在 根数组[2]
+        val navElement = secondElementArray.getJSONArray(2) // [ "$", "nav", ... ]
+
+        // 沿着 JSON 树向下查找
+        val navChildrenObj = navElement.getJSONObject(3)
+
+        // navChildrenObj.getJSONArray("children") 返回的就是 ul 元素数组 [ "$", "ul", null, {...} ]
+        val ulElement = navChildrenObj.getJSONArray("children") // [ "$", "ul", ... ]
+
+        val ulChildrenObj = ulElement.getJSONObject(3) //
+        val ulChildrenArray = ulChildrenObj.getJSONArray("children") // [null, [...pages...], [...controls...]]
+
+        // !!! 关键修复: 检查索引 2 (controls) 是否为 null !!!
+        if (ulChildrenArray.isNull(2)) {
+            Log.i(TAG, "[7-List] 未找到 'next/last' 按钮组 (ulChildrenArray[2] is null)，尝试从页码列表获取。")
+
+            // 如果 controls 不存在 (可能只有1页)，则"最后一页"就是页码列表的最后一项
+            val pagesArray = ulChildrenArray.getJSONArray(1) // [...pages...]
+            if (pagesArray.length() > 0) {
+                // 获取页码列表的最后一个 <li>
+                val lastPageLi = pagesArray.getJSONArray(pagesArray.length() - 1)
+                val lastPageLiChildrenObj = lastPageLi.getJSONObject(3)
+
+                // "children" 数组 [ "$", "a", ... ] 本身就是 <a> 元素
+                val lastPageA = lastPageLiChildrenObj.getJSONArray("children")
+                val lastPageA_Obj = lastPageA.getJSONObject(3)
+
+                // 提取 href, 例如: "/?page=1"
+                val href = lastPageA_Obj.getString("href")
+                val pageNumStr = href.split("=").lastOrNull()
+                if (pageNumStr != null) {
+                    lastPage = pageNumStr.toIntOrNull()
+                    Log.i(TAG, "[7-List] 从页码列表解析到最后一页 (Last Page): $lastPage")
+                }
+            } else {
+                Log.i(TAG, "[7-List] 页码列表也为空。")
+                lastPage = 1 // 假设至少有1页
+            }
+        } else {
+            // --- 正常路径: "controls" 数组存在 ---
+            val nextLastLinksArray = ulChildrenArray.getJSONArray(2) // [ [...next...], [...last...] ]
+
+            // 同样检查 "last page" 按钮 (index 1) 是否存在
+            if (nextLastLinksArray.isNull(1)) {
+                Log.i(TAG, "[7-List] 未找到 'last page' 按钮 (nextLastLinksArray[1] is null)，可能页数较少。")
+
+                // 再次回退，使用页码列表的最后一项
+                val pagesArray = ulChildrenArray.getJSONArray(1)
+                if (pagesArray.length() > 0) {
+                    val lastPageLi = pagesArray.getJSONArray(pagesArray.length() - 1)
+                    val lastPageLiChildrenObj = lastPageLi.getJSONObject(3)
+
+                    val lastPageA = lastPageLiChildrenObj.getJSONArray("children")
+                    val lastPageA_Obj = lastPageA.getJSONObject(3)
+                    val href = lastPageA_Obj.getString("href")
+                    val pageNumStr = href.split("=").lastOrNull()
+                    lastPage = pageNumStr?.toIntOrNull()
+                    Log.i(TAG, "[7E-List] 从页码列表解析到最后一页 (Last Page): $lastPage")
+                }
+            } else {
+                // --- 完美路径: 找到了 "last page" 按钮 ---
+                val lastPageLi = nextLastLinksArray.getJSONArray(1) // [ "$", "li", ... ]
+                val lastPageLiChildrenObj = lastPageLi.getJSONObject(3)
+
+                val lastPageA = lastPageLiChildrenObj.getJSONArray("children") // [ "$", "a", ... ]
+                val lastPageA_Obj = lastPageA.getJSONObject(3)
+
+                // "aria-label" 为 "last page"
+                // Log.d(TAG, "[7-List] Last Page Aria Label: ${lastPageA_Obj.getString("aria-label")}")
+
+                val href = lastPageA_Obj.getString("href") // "/?page=16824"
+
+                val pageNumStr = href.split("=").lastOrNull()
+                if (pageNumStr != null) {
+                    lastPage = pageNumStr.toIntOrNull()
+                    Log.i(TAG, "[7-List] 从 'last page' 按钮解析到最后一页: $lastPage")
+                } else {
+                    Log.w(TAG, "[7-List] 无法从 'last page' 的 href '$href' 中提取页码")
+                }
+            }
+        }
+    } catch (e: Exception) {
+        Log.e(TAG, "[7-List] 解析 'last page' 失败 (常规流程): ${e.message}", e)
+    }
+
+    // 返回解析到的页码（可能为 null）
+    return lastPage
 }
 
 /**

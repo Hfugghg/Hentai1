@@ -31,20 +31,20 @@ import kotlinx.coroutines.launch
 
 // 保持 ReaderViewModelFactory 和 ReaderScreen 不变
 
-class ReaderViewModelFactory(private val application: Application, private val comicId: String) : ViewModelProvider.Factory {
+class ReaderViewModelFactory(private val application: Application, private val comicId: String, private val isLocal: Boolean) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(ReaderViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return ReaderViewModel(application, comicId) as T
+            return ReaderViewModel(application, comicId, isLocal) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
 
 @Composable
-fun ReaderScreen(comicId: String) {
+fun ReaderScreen(comicId: String, isLocal: Boolean) { // 接受 isLocal 参数
     val viewModel: ReaderViewModel = viewModel(
-        factory = ReaderViewModelFactory(LocalContext.current.applicationContext as Application, comicId)
+        factory = ReaderViewModelFactory(LocalContext.current.applicationContext as Application, comicId, isLocal) // 传递 isLocal 参数
     )
     val uiState by viewModel.uiState.collectAsState()
 
@@ -81,7 +81,7 @@ fun ReaderScreen(comicId: String) {
 
 @Composable
 fun ZoomableReader(imageUrls: List<String>) {
-    var scale by remember { mutableStateOf(1f) }
+    var scale by remember { mutableFloatStateOf(1f) } // 优化为 mutableFloatStateOf
     var offset by remember { mutableStateOf(Offset.Zero) }
     val lazyListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -103,7 +103,7 @@ fun ZoomableReader(imageUrls: List<String>) {
             .fillMaxSize()
             .pointerInput(Unit) {
                 // 使用 detectTransformGestures 来同时处理缩放和平移
-                detectTransformGestures { centroid, pan, zoom, rotation ->
+                detectTransformGestures { centroid, pan, zoom, rotation -> // rotation 未使用，但保留作为手势检测的一部分
 
                     val oldScale = scale
                     val newScale = (scale * zoom).coerceIn(1f, 5f)
@@ -168,15 +168,15 @@ fun ZoomableReader(imageUrls: List<String>) {
         ) {
             ReaderContent(
                 imageUrls = imageUrls,
-                lazyListState = lazyListState,
-                scaleState = scale
+                lazyListState = lazyListState
+                // scaleState 参数已移除，因为它未被使用
             )
         }
     }
 }
 
 @Composable
-fun ReaderContent(imageUrls: List<String>, lazyListState: LazyListState, scaleState: Float) {
+fun ReaderContent(imageUrls: List<String>, lazyListState: LazyListState) { // 移除 scaleState 参数
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         state = lazyListState,

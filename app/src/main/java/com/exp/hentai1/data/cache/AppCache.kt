@@ -4,6 +4,7 @@ import android.content.Context
 import coil.Coil
 import coil.ImageLoader
 import coil.annotation.ExperimentalCoilApi
+import com.exp.hentai1.data.SettingsRepository
 import java.io.File
 
 data class ClearAllResult(
@@ -14,9 +15,11 @@ data class ClearAllResult(
 @OptIn(ExperimentalCoilApi::class)
 object AppCache {
     private lateinit var imageLoader: ImageLoader
+    private lateinit var settingsRepository: SettingsRepository // Add settingsRepository
 
     fun initialize(context: Context) {
         this.imageLoader = Coil.imageLoader(context)
+        this.settingsRepository = SettingsRepository(context) // Initialize settingsRepository
     }
 
     // --- 内存缓存方法 ---
@@ -27,6 +30,10 @@ object AppCache {
 
     fun getMaxMemoryCacheSizeInMB(): Float {
         return (imageLoader.memoryCache?.maxSize ?: 0) / 1024f / 1024f
+    }
+
+    fun getMemoryCachePercent(): Float {
+        return settingsRepository.getMemoryCachePercent()
     }
 
     // --- 磁盘缓存方法 ---

@@ -8,10 +8,13 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,11 +32,11 @@ import com.exp.hentai1.data.Tag
 import com.exp.hentai1.ui.screen.FavoriteFolderDialog
 
 // 为 DetailViewModel 创建一个 Factory
-class DetailViewModelFactory(private val application: Application, private val comicId: String) : ViewModelProvider.Factory {
+class DetailViewModelFactory(private val application: Application, private val comicId: String, private val isLocal: Boolean) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(DetailViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return DetailViewModel(application, comicId) as T
+            return DetailViewModel(application, comicId, isLocal) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
@@ -42,17 +45,27 @@ class DetailViewModelFactory(private val application: Application, private val c
 @Composable
 fun DetailScreen(
     comicId: String,
-    onNavigateToReader: (String) -> Unit,
-    onNavigateToTagSearch: (String) -> Unit // 【修改】标签搜索导航回调
+    onNavigateToReader: (String, Boolean) -> Unit, // 修改签名，接受 isLocal 参数
+    onNavigateToTagSearch: (String) -> Unit,
+    isLocal: Boolean = false // 新增 isLocal 参数，默认为 false
 ) {
-    // 使用 Factory 来创建 ViewModel 实例
+    // 使用 Factory 来创建 ViewModel 实例，并传入 isLocal
     val viewModel: DetailViewModel = viewModel(
-        factory = DetailViewModelFactory(LocalContext.current.applicationContext as Application, comicId)
+        factory = DetailViewModelFactory(LocalContext.current.applicationContext as Application, comicId, isLocal)
     )
     val uiState by viewModel.uiState.collectAsState()
 
+    val context = LocalContext.current
+
+    // 监听错误状态，并在有错误时显示 Toast
+    LaunchedEffect(uiState.error) {
+        uiState.error?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+        }
+    }
+
     when {
-        uiState.isLoading -> {
+        uiState.isLoading && uiState.comic == null -> { // 只在初次加载时显示全屏加载
             Column(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -63,8 +76,29 @@ fun DetailScreen(
                 Text(text = "正在加载漫画详情...")
             }
         }
-        uiState.error != null -> {
-            Column(
+        uiState.comic != null -> {
+            ComicDetailContent(
+                comic = uiState.comic!!,
+                coverImageModel = uiState.coverImageModel, // 传递 coverImageModel
+                onReadClick = {
+                    onNavigateToReader(comicId, isLocal) // 传递 isLocal 参数
+                },
+                onDownloadClick = {
+                    Toast.makeText(context, "正在准备下载数据...", Toast.LENGTH_SHORT).show()
+                    viewModel.downloadComic()
+                },
+                comicId = comicId,
+                isFavorite = uiState.isFavorite,
+                onToggleFavorite = { viewModel.toggleFavorite() },
+                onNavigateToTagSearch = onNavigateToTagSearch,
+                foldersWithCount = uiState.foldersWithCount,
+                onAddToFavoriteFolder = { folder -> viewModel.addToFavoriteFolder(folder) },
+                onCreateNewFolder = { folderName -> viewModel.createNewFolderAndAddToFavorites(folderName) }
+            )
+        }
+        // 当 comic 为 null 且有错误时，显示错误页面
+        uiState.error != null && uiState.comic == null -> {
+             Column(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
@@ -76,21 +110,6 @@ fun DetailScreen(
                 )
             }
         }
-        uiState.comic != null -> {
-            ComicDetailContent(
-                comic = uiState.comic!!,
-                onReadClick = {
-                    onNavigateToReader(comicId)
-                },
-                comicId = comicId,
-                isFavorite = uiState.isFavorite,
-                onToggleFavorite = { viewModel.toggleFavorite() },
-                onNavigateToTagSearch = onNavigateToTagSearch, // 【修改】传递回调
-                foldersWithCount = uiState.foldersWithCount,
-                onAddToFavoriteFolder = { folder -> viewModel.addToFavoriteFolder(folder) },
-                onCreateNewFolder = { folderName -> viewModel.createNewFolderAndAddToFavorites(folderName) }
-            )
-        }
     }
 }
 
@@ -98,11 +117,13 @@ fun DetailScreen(
 @Composable
 fun ComicDetailContent(
     comic: Comic,
+    coverImageModel: Any?, // 接收 coverImageModel
     onReadClick: () -> Unit,
+    onDownloadClick: () -> Unit,
     comicId: String,
     isFavorite: Boolean,
     onToggleFavorite: () -> Unit,
-    onNavigateToTagSearch: (String) -> Unit, // 【修改】标签搜索导航回调
+    onNavigateToTagSearch: (String) -> Unit,
     foldersWithCount: List<FavoriteFolderWithCount>,
     onAddToFavoriteFolder: (FavoriteFolder) -> Unit,
     onCreateNewFolder: (String) -> Unit
@@ -135,11 +156,16 @@ fun ComicDetailContent(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                AsyncImage(
-                    model = comic.coverUrl,
-                    contentDescription = comic.title,
-                    modifier = Modifier.height(400.dp) // 增加高度以获得更好的视觉效果
-                )
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.height(400.dp)
+                ) {
+                    AsyncImage(
+                        model = coverImageModel, // 使用 coverImageModel
+                        contentDescription = comic.title,
+                        modifier = Modifier.fillMaxHeight()
+                    )
+                }
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = comic.title,
@@ -147,7 +173,6 @@ fun ComicDetailContent(
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                // 添加 comicId 和复制按钮
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = "Comic ID: $comicId",
@@ -163,50 +188,75 @@ fun ComicDetailContent(
                         Text("复制")
                     }
                 }
-                Spacer(modifier = Modifier.height(16.dp))
+                Divider(modifier = Modifier.padding(vertical = 16.dp))
             }
 
-            // --- 【修改】统一并排序详细信息区域 ---
             Column(modifier = Modifier.fillMaxWidth()) {
-                DetailTagListRow("作者", "artists", comic.artists, onNavigateToTagSearch) // 【修改】传递回调
-                DetailTagListRow("社团", "groups", comic.groups, onNavigateToTagSearch)   // 【修改】传递回调
-                DetailTagListRow("原作", "parodies", comic.parodies, onNavigateToTagSearch) // 【修改】传递回调
-                DetailTagListRow("角色", "characters", comic.characters, onNavigateToTagSearch) // 【修改】传递回调
-                DetailTagListRow("标签", "tags", comic.tags, onNavigateToTagSearch)     // 【修改】传递回调
-                DetailTagListRow("语言", "languages", comic.languages, onNavigateToTagSearch) // 【修改】传递回调
-                DetailTagListRow("分类", "categories", comic.categories, onNavigateToTagSearch) // 【修改】传递回调
+                DetailTagListRow("作者", "artists", comic.artists, onNavigateToTagSearch)
+                DetailTagListRow("社团", "groups", comic.groups, onNavigateToTagSearch)
+                DetailTagListRow("原作", "parodies", comic.parodies, onNavigateToTagSearch)
+                DetailTagListRow("角色", "characters", comic.characters, onNavigateToTagSearch)
+                DetailTagListRow("标签", "tags", comic.tags, onNavigateToTagSearch)
+                DetailTagListRow("语言", "languages", comic.languages, onNavigateToTagSearch)
+                DetailTagListRow("分类", "categories", comic.categories, onNavigateToTagSearch)
             }
-            // --- 【修改结束】---
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Divider(modifier = Modifier.padding(vertical = 16.dp))
 
-            // --- 【修改】功能按钮区域 ---
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 32.dp), // 左右留出间距，让按钮组居中且不会过宽
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(
                     onClick = onReadClick,
-                    modifier = Modifier.weight(1f) // 使用 weight 让按钮平分宽度，实现等宽
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
-                    Text("阅读")
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Outlined.MenuBook,
+                            contentDescription = "阅读",
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("阅读", style = MaterialTheme.typography.labelSmall)
+                    }
                 }
 
-                // 根据收藏状态，动态改变按钮的颜色和文字
-                val (buttonText, buttonColors) = if (isFavorite) {
-                    // 已收藏：显示“取消收藏”，使用次要颜色，降低视觉强调
-                    "取消收藏" to androidx.compose.material3.ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                Button(
+                    onClick = onDownloadClick,
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(vertical = 12.dp)
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Outlined.Download,
+                            contentDescription = "下载",
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("下载", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+
+                val (buttonText, buttonIcon, buttonColors) = if (isFavorite) {
+                    Triple(
+                        "已收藏",
+                        Icons.Filled.Favorite,
+                        ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
                     )
                 } else {
-                    // 未收藏：显示“加入收藏”，使用主要颜色，吸引用户点击
-                    "加入收藏" to androidx.compose.material3.ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    Triple(
+                        "收藏",
+                        Icons.Outlined.FavoriteBorder,
+                        ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
                     )
                 }
 
@@ -218,20 +268,25 @@ fun ComicDetailContent(
                             showDialog = true
                         }
                     },
-                    modifier = Modifier.weight(1f), // 使用 weight 让按钮平分宽度，实现等宽
-                    colors = buttonColors
+                    modifier = Modifier.weight(1f),
+                    colors = buttonColors,
+                    contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
-                    Text(buttonText)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = buttonIcon,
+                            contentDescription = buttonText,
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(buttonText, style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             }
-            // --- 【修改结束】---
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
 
-        // 图片列表
         if (comic.imageList.isNotEmpty()) {
             item {
+                Divider(modifier = Modifier.padding(vertical = 16.dp))
                 Text(text = "图片列表:", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(8.dp))
             }
@@ -252,9 +307,9 @@ fun ComicDetailContent(
 @Composable
 fun DetailTagListRow(
     label: String,
-    tagType: String, // 【新增】标签类型，用于构建搜索URL
+    tagType: String,
     tags: List<Tag>,
-    onNavigateToTagSearch: (String) -> Unit // 【修改】标签搜索导航回调
+    onNavigateToTagSearch: (String) -> Unit
 ) {
     if (tags.isNotEmpty()) {
         Column(modifier = Modifier.padding(vertical = 4.dp)) {
@@ -272,12 +327,13 @@ fun DetailTagListRow(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 tags.forEach { tag ->
-                    Button(
+                    ElevatedAssistChip(
                         onClick = { onNavigateToTagSearch("tag:${tagType}:${tag.id}:${tag.name}") },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Text(text = tag.name)
-                    }
+                        label = { Text(text = tag.name) },
+                        colors = AssistChipDefaults.elevatedAssistChipColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    )
                 }
             }
         }

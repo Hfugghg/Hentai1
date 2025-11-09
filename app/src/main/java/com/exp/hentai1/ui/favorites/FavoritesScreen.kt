@@ -17,10 +17,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
 import com.exp.hentai1.data.Comic
 import com.exp.hentai1.data.remote.HentaiOneSite
 import com.exp.hentai1.data.remote.NetworkUtils
+import com.exp.hentai1.ui.common.ComicCard
+import com.exp.hentai1.ui.common.ComicCardStyle
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -188,20 +189,13 @@ private fun FavoriteItem(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AsyncImage(
-            model = comic.coverUrl,
-            contentDescription = comic.title,
-            modifier = Modifier.size(width = 80.dp, height = 120.dp)
+        ComicCard(
+            comic = comic,
+            style = ComicCardStyle.LIST,
+            modifier = Modifier.weight(1f),
+            onComicClick = { onComicClick() },
+            subtitle = "收藏于: ${SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(comic.timestamp))}"
         )
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = comic.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "收藏于: ${SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(comic.timestamp))}",
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
         if (isManagementMode) {
             Checkbox(
                 checked = isSelected,

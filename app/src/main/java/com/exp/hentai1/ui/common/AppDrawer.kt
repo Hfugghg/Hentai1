@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
@@ -45,6 +46,9 @@ fun AppDrawer(
         // 修正：直接使用 Icons.Default.Leaderboard
         MenuItem("排行", Icons.Default.Leaderboard),
 
+        // "本地": Folder (核心库)
+        MenuItem("本地", Icons.Default.Folder),
+
         // "收藏": Favorite (核心库)
         MenuItem("收藏", Icons.Default.Favorite),
 
@@ -52,7 +56,12 @@ fun AppDrawer(
         MenuItem("设置", Icons.Default.Settings)
     )
 
-    Column(modifier = Modifier.padding(8.dp)) {
+    Column(
+        modifier = Modifier
+            .padding(8.dp)
+            .widthIn(max = 280.dp) // 设置最大宽度，防止在宽屏设备上过宽
+            .fillMaxWidth(0.7f) // 在小屏设备上占据屏幕宽度的 70%
+    ) {
         menuItems.forEach { item ->
             DrawerItem(item = item, onClick = { onMenuClick(item.title) })
         }
