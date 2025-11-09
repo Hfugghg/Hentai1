@@ -61,5 +61,3 @@
 ## 📄 许可证
 
 本项目基于 GNU 许可证。详情请参阅 `LICENSE` 文件。
-
-[![Alt](https://repobeats.axiom.co/api/embed/e6becb5b041dae430dff7f85581aa1f91975d416.svg "Repobeats analytics image")](https://github.com/Hfugghg/Hentai1/pulse)
