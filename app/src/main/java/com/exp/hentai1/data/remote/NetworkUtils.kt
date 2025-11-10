@@ -3,6 +3,8 @@ package com.exp.hentai1.data.remote
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Looper
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import kotlinx.coroutines.Dispatchers
@@ -116,16 +118,16 @@ object NetworkUtils {
                             // 我们可以在这里添加一个超时，以防止卡住。
                         }
 
-                        @Suppress("OverridingDeprecatedMember")
                         override fun onReceivedError(
                             view: WebView?,
-                            errorCode: Int,
-                            description: String?,
-                            failingUrl: String?
+                            request: WebResourceRequest?,
+                            error: WebResourceError?
                         ) {
-                            super.onReceivedError(view, errorCode, description, failingUrl)
+                            super.onReceivedError(view, request, error)
                             if (continuation.isActive) {
-                                continuation.resumeWithException(Exception("WebView error ($failingUrl): $description"))
+                                val errorMessage = error?.description ?: "Unknown error"
+                                val failingUrl = request?.url?.toString() ?: "Unknown URL"
+                                continuation.resumeWithException(Exception("WebView error ($failingUrl): $errorMessage"))
                                 view?.destroy()
                             }
                         }

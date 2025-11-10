@@ -12,6 +12,7 @@ import com.exp.hentai1.data.remote.NetworkUtils
 import com.exp.hentai1.data.remote.parser.ComicDataParser
 import com.exp.hentai1.data.remote.parser.NextFParser
 import com.exp.hentai1.data.remote.parser.parsePayload6
+import com.exp.hentai1.data.AppDatabase
 import com.exp.hentai1.worker.DownloadWorker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,6 +20,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
+
+/** 标签状态枚举 */
+enum class TagStatus {
+    NONE, // 无状态
+    FAVORITE, // 收藏/关注
+    BLOCKED // 拉黑
+}
 
 data class FavoriteFolderWithCount(
     val folder: FavoriteFolder,
@@ -31,7 +39,8 @@ data class DetailUiState(
     val error: String? = null,
     val isFavorite: Boolean = false,
     val foldersWithCount: List<FavoriteFolderWithCount> = emptyList(),
-    val coverImageModel: Any? = null // 新增：用于 AsyncImage 的模型，可以是 String (URL) 或 File (本地路径)
+    val coverImageModel: Any? = null, // 新增：用于 AsyncImage 的模型，可以是 String (URL) 或 File (本地路径)
+    val tagStatuses: Map<String, TagStatus> = emptyMap() // 新增：用于存储标签状态
 )
 
 class DetailViewModel(application: Application, private val comicId: String, private val loadLocal: Boolean) : AndroidViewModel(application) {
@@ -42,6 +51,7 @@ class DetailViewModel(application: Application, private val comicId: String, pri
     private val favoriteDao = AppDatabase.getDatabase(application).favoriteDao()
     private val favoriteFolderDao = AppDatabase.getDatabase(application).favoriteFolderDao()
     private val downloadDao = AppDatabase.getDatabase(application).downloadDao()
+    private val userTagDao = AppDatabase.getDatabase(application).userTagDao()
 
     init {
         if (loadLocal) {
@@ -51,6 +61,59 @@ class DetailViewModel(application: Application, private val comicId: String, pri
         }
         checkIfFavorite()
         loadFavoriteFolders()
+        loadUserTags() // 加载用户标签状态
+    }
+
+    private fun loadUserTags() {
+        viewModelScope.launch {
+            userTagDao.getAllTags().collect { userTags ->
+                val statusMap = userTags.associate { userTag ->
+                    userTag.id to when (userTag.type) {
+                        1 -> TagStatus.FAVORITE
+                        0 -> TagStatus.BLOCKED
+                        else -> TagStatus.NONE
+                    }
+                }
+                _uiState.update { it.copy(tagStatuses = statusMap) }
+            }
+        }
+    }
+
+    fun toggleTagStatus(tag: Tag, tagType: String, currentStatus: TagStatus) {
+        viewModelScope.launch {
+            val newStatus = when (currentStatus) {
+                TagStatus.NONE -> TagStatus.FAVORITE
+                TagStatus.FAVORITE -> TagStatus.BLOCKED
+                TagStatus.BLOCKED -> TagStatus.NONE
+            }
+
+            if (newStatus == TagStatus.NONE) {
+                userTagDao.delete(tag.id)
+            } else {
+                val type = if (newStatus == TagStatus.FAVORITE) 1 else 0
+                val userTag = UserTag(
+                    id = tag.id,
+                    name = tag.name,
+                    englishName = "", // 传空值
+                    category = tagType,
+                    timestamp = System.currentTimeMillis(),
+                    type = type
+                )
+                userTagDao.insert(userTag)
+            }
+
+            // --- 新增：手动更新 UI 状态 ---
+            _uiState.update { currentState ->
+                val mutableMap = currentState.tagStatuses.toMutableMap()
+                if (newStatus == TagStatus.NONE) {
+                    mutableMap.remove(tag.id)
+                } else {
+                    mutableMap[tag.id] = newStatus
+                }
+                currentState.copy(tagStatuses = mutableMap)
+            }
+            // --- 结束新增 ---
+        }
     }
 
     private fun loadLocalComicDetail() {
@@ -60,20 +123,18 @@ class DetailViewModel(application: Application, private val comicId: String, pri
             if (localDownload != null) {
                 val comic = convertDownloadToComic(localDownload)
 
-                // 构造本地封面文件路径
                 val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                 val comicDir = File(downloadDir, "Hentai1/$comicId")
                 val coverFile = File(comicDir, "cover.webp")
 
-                val imageModel: Any = if (coverFile.exists()) { // 将 Any? 改为 Any
-                    coverFile // 使用 File 对象加载本地图片
+                val imageModel: Any = if (coverFile.exists()) {
+                    coverFile
                 } else {
-                    comic.coverUrl // 如果本地文件不存在，回退到远程 URL
+                    comic.coverUrl
                 }
 
                 _uiState.update { it.copy(isLoading = false, comic = comic, coverImageModel = imageModel) }
             } else {
-                // 如果本地没有，则尝试从网络加载
                 fetchComicDetailFromNetwork()
             }
         }
@@ -83,7 +144,7 @@ class DetailViewModel(application: Application, private val comicId: String, pri
         return Comic(
             id = download.comicId,
             title = download.title,
-            coverUrl = download.coverUrl, // 这里的 coverUrl 仍然是远程 URL
+            coverUrl = download.coverUrl,
             imageList = download.imageList,
             artists = download.artists,
             groups = download.groups,
@@ -92,7 +153,7 @@ class DetailViewModel(application: Application, private val comicId: String, pri
             tags = download.tags,
             languages = download.languages,
             categories = download.categories,
-            timestamp = download.timestamp // 假设时间戳是相关的
+            timestamp = download.timestamp
         )
     }
 
@@ -164,7 +225,7 @@ class DetailViewModel(application: Application, private val comicId: String, pri
         }
     }
 
-    private fun fetchComicDetailFromNetwork() { // 从 fetchComicDetail 重命名而来
+    private fun fetchComicDetailFromNetwork() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
@@ -172,7 +233,7 @@ class DetailViewModel(application: Application, private val comicId: String, pri
                 val html = NetworkUtils.fetchHtml(getApplication(), url)
                 if (html != null && !html.startsWith("Error")) {
                     val comic = ComicDataParser.parseComicDetail(html)
-                    _uiState.update { it.copy(isLoading = false, comic = comic, coverImageModel = comic?.coverUrl) } // 修复空安全问题
+                    _uiState.update { it.copy(isLoading = false, comic = comic, coverImageModel = comic?.coverUrl) }
                 } else {
                     _uiState.update { it.copy(isLoading = false, error = html ?: "未能获取到漫画详情") }
                 }
@@ -235,14 +296,13 @@ class DetailViewModel(application: Application, private val comicId: String, pri
 
     private fun startDownloadWorker(comicToDownload: Comic) {
         val inputData = Data.Builder()
-            .putString(DownloadWorker.KEY_COMIC_ID, comicToDownload.id) // 修复 KEY_COMIC_ID 引用
+            .putString(DownloadWorker.KEY_COMIC_ID, comicToDownload.id)
             .build()
 
-        // 为工作请求添加一个唯一标签，以便于观察
         val downloadWorkRequest = OneTimeWorkRequestBuilder<DownloadWorker>()
             .setInputData(inputData)
-            .addTag(DownloadWorker::class.java.name) // 所有下载工作器的通用标签
-            .addTag("id:${comicToDownload.id}") // 此漫画的特定标签
+            .addTag(DownloadWorker::class.java.name)
+            .addTag("id:${comicToDownload.id}")
             .build()
 
         WorkManager.getInstance(getApplication()).enqueue(downloadWorkRequest)

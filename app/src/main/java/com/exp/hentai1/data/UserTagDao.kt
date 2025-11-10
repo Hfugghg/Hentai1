@@ -17,6 +17,9 @@ interface UserTagDao {
     @Query("DELETE FROM user_tags WHERE id = :id AND category = :category AND type = :type")
     suspend fun deleteByIdCategoryAndType(id: String, category: String, type: Int)
 
+    @Query("SELECT * FROM user_tags WHERE id = :id")
+    suspend fun getTagById(id: String): UserTag?
+
     @Query("SELECT * FROM user_tags WHERE type = :type ORDER BY timestamp DESC")
     fun getTagsByType(type: Int): Flow<List<UserTag>>
 

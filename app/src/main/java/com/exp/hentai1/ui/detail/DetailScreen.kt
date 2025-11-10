@@ -5,19 +5,22 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.outlined.Download
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -93,12 +96,14 @@ fun DetailScreen(
                 onNavigateToTagSearch = onNavigateToTagSearch,
                 foldersWithCount = uiState.foldersWithCount,
                 onAddToFavoriteFolder = { folder -> viewModel.addToFavoriteFolder(folder) },
-                onCreateNewFolder = { folderName -> viewModel.createNewFolderAndAddToFavorites(folderName) }
+                onCreateNewFolder = { folderName -> viewModel.createNewFolderAndAddToFavorites(folderName) },
+                viewModel = viewModel,
+                tagStatuses = uiState.tagStatuses // 传递标签状态
             )
         }
         // 当 comic 为 null 且有错误时，显示错误页面
         uiState.error != null && uiState.comic == null -> {
-             Column(
+            Column(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
@@ -126,10 +131,15 @@ fun ComicDetailContent(
     onNavigateToTagSearch: (String) -> Unit,
     foldersWithCount: List<FavoriteFolderWithCount>,
     onAddToFavoriteFolder: (FavoriteFolder) -> Unit,
-    onCreateNewFolder: (String) -> Unit
+    onCreateNewFolder: (String) -> Unit,
+    viewModel: DetailViewModel,
+    tagStatuses: Map<String, TagStatus> // 接收标签状态
 ) {
     val context = LocalContext.current
     var showDialog by remember { mutableStateOf(false) }
+    // 新增状态，用于控制标签长按弹窗
+    var selectedTag by remember { mutableStateOf<Pair<Tag, String>?>(null) }
+
 
     if (showDialog) {
         FavoriteFolderDialog(
@@ -143,6 +153,19 @@ fun ComicDetailContent(
                 onCreateNewFolder(it)
                 showDialog = false
             }
+        )
+    }
+
+    // 标签长按弹窗
+    selectedTag?.let { (tag, tagType) ->
+        TagActionDialog(
+            tag = tag,
+            onDismiss = { selectedTag = null },
+            onToggleStatus = { currentStatus ->
+                viewModel.toggleTagStatus(tag, tagType, currentStatus)
+                selectedTag = null // 切换后关闭弹窗
+            },
+            currentStatus = tagStatuses[tag.id] ?: TagStatus.NONE // 传递当前状态
         )
     }
 
@@ -188,20 +211,20 @@ fun ComicDetailContent(
                         Text("复制")
                     }
                 }
-                Divider(modifier = Modifier.padding(vertical = 16.dp))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
             }
 
             Column(modifier = Modifier.fillMaxWidth()) {
-                DetailTagListRow("作者", "artists", comic.artists, onNavigateToTagSearch)
-                DetailTagListRow("社团", "groups", comic.groups, onNavigateToTagSearch)
-                DetailTagListRow("原作", "parodies", comic.parodies, onNavigateToTagSearch)
-                DetailTagListRow("角色", "characters", comic.characters, onNavigateToTagSearch)
-                DetailTagListRow("标签", "tags", comic.tags, onNavigateToTagSearch)
-                DetailTagListRow("语言", "languages", comic.languages, onNavigateToTagSearch)
-                DetailTagListRow("分类", "categories", comic.categories, onNavigateToTagSearch)
+                DetailTagListRow("作者", "artists", comic.artists, onNavigateToTagSearch, tagStatuses) { tag, tagType -> selectedTag = Pair(tag, tagType) }
+                DetailTagListRow("社团", "groups", comic.groups, onNavigateToTagSearch, tagStatuses) { tag, tagType -> selectedTag = Pair(tag, tagType) }
+                DetailTagListRow("原作", "parodies", comic.parodies, onNavigateToTagSearch, tagStatuses) { tag, tagType -> selectedTag = Pair(tag, tagType) }
+                DetailTagListRow("角色", "characters", comic.characters, onNavigateToTagSearch, tagStatuses) { tag, tagType -> selectedTag = Pair(tag, tagType) }
+                DetailTagListRow("标签", "tags", comic.tags, onNavigateToTagSearch, tagStatuses) { tag, tagType -> selectedTag = Pair(tag, tagType) }
+                DetailTagListRow("语言", "languages", comic.languages, onNavigateToTagSearch, tagStatuses) { tag, tagType -> selectedTag = Pair(tag, tagType) }
+                DetailTagListRow("分类", "categories", comic.categories, onNavigateToTagSearch, tagStatuses) { tag, tagType -> selectedTag = Pair(tag, tagType) }
             }
 
-            Divider(modifier = Modifier.padding(vertical = 16.dp))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
             Row(
                 modifier = Modifier
@@ -217,7 +240,7 @@ fun ComicDetailContent(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
-                            imageVector = Icons.Outlined.MenuBook,
+                            imageVector = Icons.AutoMirrored.Outlined.MenuBook,
                             contentDescription = "阅读",
                         )
                         Spacer(modifier = Modifier.height(4.dp))
@@ -286,7 +309,7 @@ fun ComicDetailContent(
 
         if (comic.imageList.isNotEmpty()) {
             item {
-                Divider(modifier = Modifier.padding(vertical = 16.dp))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
                 Text(text = "图片列表:", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(8.dp))
             }
@@ -303,13 +326,15 @@ fun ComicDetailContent(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun DetailTagListRow(
     label: String,
     tagType: String,
     tags: List<Tag>,
-    onNavigateToTagSearch: (String) -> Unit
+    onNavigateToTagSearch: (String) -> Unit,
+    tagStatuses: Map<String, TagStatus>, // 接收标签状态
+    onTagLongClick: (Tag, String) -> Unit // 新增长按事件回调
 ) {
     if (tags.isNotEmpty()) {
         Column(modifier = Modifier.padding(vertical = 4.dp)) {
@@ -327,15 +352,131 @@ fun DetailTagListRow(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 tags.forEach { tag ->
-                    ElevatedAssistChip(
-                        onClick = { onNavigateToTagSearch("tag:${tagType}:${tag.id}:${tag.name}") },
-                        label = { Text(text = tag.name) },
-                        colors = AssistChipDefaults.elevatedAssistChipColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
-                    )
+                    val tagStatus = tagStatuses[tag.id] ?: TagStatus.NONE
+                    val containerColor = when (tagStatus) {
+                        TagStatus.BLOCKED -> MaterialTheme.colorScheme.errorContainer
+                        TagStatus.FAVORITE -> Color(0xFFFFD700)
+                        TagStatus.NONE -> MaterialTheme.colorScheme.surfaceVariant
+                    }
+                    val contentColor = when (tagStatus) {
+                        TagStatus.BLOCKED -> MaterialTheme.colorScheme.onErrorContainer
+                        TagStatus.FAVORITE -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        TagStatus.NONE -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+
+                    // --- ⬇️ 这是修改后的代码块 ⬇️ ---
+
+                    Surface(
+                        // 1. 应用与 ElevatedAssistChip 相同的样式
+                        shape = AssistChipDefaults.shape,
+                        color = containerColor,
+                        contentColor = contentColor,
+                        border = if (tagStatus == TagStatus.FAVORITE) BorderStroke(1.dp, Color(0xFFFFD700).copy(alpha = 0.7f)) else null,
+
+                        // --- 这里是修复 ---
+                        tonalElevation = 0.dp, // 替换 Unresolved reference
+                        shadowElevation = 1.dp, // 替换 Unresolved reference (这是 ElevatedAssistChip 的默认阴影)
+                        // --- 修复结束 ---
+
+                        // 2. 使用 combinedClickable 作为唯一的手势处理器
+                        modifier = Modifier
+                            .height(AssistChipDefaults.Height) // 使用 Chip 的默认高度
+                            .combinedClickable(
+                                // 这里是我们的点击逻辑
+                                onClick = {
+                                    onNavigateToTagSearch("tag:${tagType}:${tag.id}:${tag.name}")
+                                },
+                                // 这里是我们的长按逻辑
+                                onLongClick = {
+                                    onTagLongClick(tag, tagType)
+                                }
+                            )
+                    ) {
+                        // 3. 复制 Chip 内部的布局（带 padding 的 Text）
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 12.dp), // AssistChip 的标准水平内边距
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = tag.name,
+                                style = MaterialTheme.typography.labelLarge // Chip 的标准字体
+                            )
+                        }
+                    }
+                    // --- ⬆️ 这是修改后的代码块 ⬆️ ---
                 }
             }
         }
     }
+}
+
+/** 标签长按操作弹窗 */
+@Composable
+fun TagActionDialog(
+    tag: Tag,
+    onDismiss: () -> Unit,
+    onToggleStatus: (TagStatus) -> Unit,
+    currentStatus: TagStatus // 接收当前状态
+) {
+    val context = LocalContext.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("标签操作: ${tag.name}", style = MaterialTheme.typography.titleLarge)
+        },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // 按钮 1: 复制标签名
+                Button(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("Tag Name", tag.name)
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(context, "标签名已复制", Toast.LENGTH_SHORT).show()
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Outlined.ContentCopy, contentDescription = "复制标签名")
+                    Spacer(Modifier.width(8.dp))
+                    Text("复制标签名")
+                }
+                Spacer(Modifier.height(8.dp))
+
+                // 按钮 2: 切换状态
+                val (buttonText, icon) = when (currentStatus) {
+                    TagStatus.NONE -> Pair("收藏/关注标签", Icons.Outlined.FavoriteBorder)
+                    TagStatus.FAVORITE -> Pair("拉黑标签", Icons.Outlined.Block)
+                    TagStatus.BLOCKED -> Pair("取消拉黑", Icons.Outlined.Check)
+                }
+                Button(
+                    onClick = {
+                        onToggleStatus(currentStatus)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = when (currentStatus) {
+                            TagStatus.NONE -> MaterialTheme.colorScheme.primary
+                            TagStatus.FAVORITE -> MaterialTheme.colorScheme.error // 准备切换到拉黑，使用红色
+                            TagStatus.BLOCKED -> MaterialTheme.colorScheme.tertiary // 准备切换到无状态，使用一个不同颜色
+                        }
+                    )
+                ) {
+                    Icon(icon, contentDescription = buttonText)
+                    Spacer(Modifier.width(8.dp))
+                    Text(buttonText)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
+        }
+    )
 }

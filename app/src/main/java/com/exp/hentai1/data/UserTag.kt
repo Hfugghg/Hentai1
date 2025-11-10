@@ -11,5 +11,5 @@ data class UserTag(
     val englishName: String,
     val category: String,
     val timestamp: Long,
-    val type: Int // 0 for blocked, 1 for favorite
+    val type: Int // 0 表示已拉黑，1 表示收藏
 )
