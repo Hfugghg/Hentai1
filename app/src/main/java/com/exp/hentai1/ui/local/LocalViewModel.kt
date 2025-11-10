@@ -1,9 +1,12 @@
 package com.exp.hentai1.ui.local
 
 import android.app.Application
+import android.content.Intent
 import android.os.Environment
+import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
@@ -12,6 +15,7 @@ import androidx.work.workDataOf
 import com.exp.hentai1.data.AppDatabase
 import com.exp.hentai1.data.Download
 import com.exp.hentai1.data.DownloadStatus
+import com.exp.hentai1.util.Event
 import com.exp.hentai1.worker.DownloadWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,6 +52,9 @@ class LocalViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(LocalUiState())
     val uiState: StateFlow<LocalUiState> = _uiState
+
+    private val _openDirectoryEvent = MutableLiveData<Event<Intent>>()
+    val openDirectoryEvent: LiveData<Event<Intent>> = _openDirectoryEvent
 
     private val downloadDao = AppDatabase.getDatabase(application).downloadDao()
     private val workManager = WorkManager.getInstance(application)
@@ -103,6 +110,29 @@ class LocalViewModel(application: Application) : AndroidViewModel(application) {
                         updateComicState(comicId, newState)
                     }
                 }
+            }
+        }
+    }
+
+    fun openComicDirectory(comicId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val baseDir = File(downloadDir, "Hentai1")
+            val comicDir = File(baseDir, comicId)
+
+            if (comicDir.exists() && comicDir.isDirectory) {
+                val application = getApplication<Application>()
+                val authority = "${application.packageName}.provider"
+                val uri = FileProvider.getUriForFile(application, authority, comicDir)
+
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    // 使用标准的目录 MIME 类型
+                    setDataAndType(uri, "application/vnd.android.directory")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                val chooser = Intent.createChooser(intent, "选择一个应用打开")
+                _openDirectoryEvent.postValue(Event(chooser))
             }
         }
     }

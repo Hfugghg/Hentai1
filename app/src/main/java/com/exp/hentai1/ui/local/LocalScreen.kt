@@ -1,41 +1,30 @@
 package com.exp.hentai1.ui.local
 
+import android.content.ActivityNotFoundException
+import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.work.WorkManager
 import com.exp.hentai1.data.Comic
 import com.exp.hentai1.ui.common.ComicCard
 import com.exp.hentai1.ui.common.ComicCardStyle
+import com.exp.hentai1.util.EventObserver
 import com.exp.hentai1.worker.DownloadWorker
 
 sealed interface DownloadState {
@@ -50,6 +39,8 @@ fun LocalScreen(
 ) {
     val viewModel: LocalViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
     val workInfos by WorkManager.getInstance(viewModel.getApplication())
         .getWorkInfosByTagLiveData(DownloadWorker::class.java.name)
@@ -58,8 +49,21 @@ fun LocalScreen(
     viewModel.observeWorkManager(workInfos)
 
     // 弹窗状态
+    var showOptionsDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var comicIdToDelete by remember { mutableStateOf<String?>(null) }
+    var selectedComicId by remember { mutableStateOf<String?>(null) }
+
+    // 观察打开目录的事件
+    LaunchedEffect(Unit) {
+        viewModel.openDirectoryEvent.observe(lifecycleOwner, EventObserver { intent ->
+            try {
+                context.startActivity(intent)
+            } catch (_: ActivityNotFoundException) {
+                Toast.makeText(context, "没有找到可以打开此目录的应用", Toast.LENGTH_SHORT).show()
+            }
+        })
+    }
+
 
     Scaffold(
         topBar = {
@@ -93,9 +97,9 @@ fun LocalScreen(
                         onComicClick = onNavigateToDetail,
                         onPauseClick = { comicId -> viewModel.pauseDownload(comicId) },
                         onResumeClick = { comicId -> viewModel.resumeDownload(comicId) },
-                        onLongClick = { comicId -> // 修改长按行为，显示弹窗
-                            comicIdToDelete = comicId
-                            showDeleteDialog = true
+                        onLongClick = { comicId -> // 修改长按行为，显示选项弹窗
+                            selectedComicId = comicId
+                            showOptionsDialog = true
                         },
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
@@ -104,23 +108,62 @@ fun LocalScreen(
         }
     }
 
+    // 选项弹窗
+    if (showOptionsDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showOptionsDialog = false
+                selectedComicId = null
+            },
+            title = { Text("操作选项") },
+            text = {
+                Column {
+                    TextButton(onClick = {
+                        showOptionsDialog = false
+                        showDeleteDialog = true // 显示删除确认弹窗
+                    }) {
+                        Text("删除漫画")
+                    }
+                    TextButton(onClick = {
+                        selectedComicId?.let { viewModel.openComicDirectory(it) }
+                        showOptionsDialog = false
+                        selectedComicId = null
+                    }) {
+                        Text("打开本地路径")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showOptionsDialog = false
+                        selectedComicId = null
+                    }
+                ) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+
     // 删除确认弹窗
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = {
                 showDeleteDialog = false
-                comicIdToDelete = null
+                selectedComicId = null
             },
             title = { Text("确认删除") },
             text = { Text("您确定要删除此漫画及其所有本地数据吗？此操作不可撤销。") },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        comicIdToDelete?.let {
+                        selectedComicId?.let {
                             viewModel.deleteComic(it)
                         }
                         showDeleteDialog = false
-                        comicIdToDelete = null
+                        selectedComicId = null
                     }
                 ) {
                     Text("删除")
@@ -130,7 +173,7 @@ fun LocalScreen(
                 TextButton(
                     onClick = {
                         showDeleteDialog = false
-                        comicIdToDelete = null
+                        selectedComicId = null
                     }
                 ) {
                     Text("取消")
