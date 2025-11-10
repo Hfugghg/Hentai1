@@ -31,20 +31,20 @@ import kotlinx.coroutines.launch
 
 // 保持 ReaderViewModelFactory 和 ReaderScreen 不变
 
-class ReaderViewModelFactory(private val application: Application, private val comicId: String, private val isLocal: Boolean) : ViewModelProvider.Factory {
+class ReaderViewModelFactory(private val application: Application, private val comicId: String) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(ReaderViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return ReaderViewModel(application, comicId, isLocal) as T
+            return ReaderViewModel(application, comicId) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
 
 @Composable
-fun ReaderScreen(comicId: String, isLocal: Boolean) { // 接受 isLocal 参数
+fun ReaderScreen(comicId: String) {
     val viewModel: ReaderViewModel = viewModel(
-        factory = ReaderViewModelFactory(LocalContext.current.applicationContext as Application, comicId, isLocal) // 传递 isLocal 参数
+        factory = ReaderViewModelFactory(LocalContext.current.applicationContext as Application, comicId)
     )
     val uiState by viewModel.uiState.collectAsState()
 

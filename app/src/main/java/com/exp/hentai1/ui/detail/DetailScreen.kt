@@ -35,11 +35,11 @@ import com.exp.hentai1.data.Tag
 import com.exp.hentai1.ui.screen.FavoriteFolderDialog
 
 // 为 DetailViewModel 创建一个 Factory
-class DetailViewModelFactory(private val application: Application, private val comicId: String, private val isLocal: Boolean) : ViewModelProvider.Factory {
+class DetailViewModelFactory(private val application: Application, private val comicId: String) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(DetailViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return DetailViewModel(application, comicId, isLocal) as T
+            return DetailViewModel(application, comicId) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
@@ -48,13 +48,12 @@ class DetailViewModelFactory(private val application: Application, private val c
 @Composable
 fun DetailScreen(
     comicId: String,
-    onNavigateToReader: (String, Boolean) -> Unit, // 修改签名，接受 isLocal 参数
-    onNavigateToTagSearch: (String) -> Unit,
-    isLocal: Boolean = false // 新增 isLocal 参数，默认为 false
+    onNavigateToReader: (String) -> Unit,
+    onNavigateToTagSearch: (String) -> Unit
 ) {
-    // 使用 Factory 来创建 ViewModel 实例，并传入 isLocal
+    // 使用 Factory 来创建 ViewModel 实例
     val viewModel: DetailViewModel = viewModel(
-        factory = DetailViewModelFactory(LocalContext.current.applicationContext as Application, comicId, isLocal)
+        factory = DetailViewModelFactory(LocalContext.current.applicationContext as Application, comicId)
     )
     val uiState by viewModel.uiState.collectAsState()
 
@@ -84,7 +83,7 @@ fun DetailScreen(
                 comic = uiState.comic!!,
                 coverImageModel = uiState.coverImageModel, // 传递 coverImageModel
                 onReadClick = {
-                    onNavigateToReader(comicId, isLocal) // 传递 isLocal 参数
+                    onNavigateToReader(comicId)
                 },
                 onDownloadClick = {
                     Toast.makeText(context, "正在准备下载数据...", Toast.LENGTH_SHORT).show()

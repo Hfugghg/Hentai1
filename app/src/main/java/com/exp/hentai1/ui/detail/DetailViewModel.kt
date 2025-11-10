@@ -43,7 +43,7 @@ data class DetailUiState(
     val tagStatuses: Map<String, TagStatus> = emptyMap() // 新增：用于存储标签状态
 )
 
-class DetailViewModel(application: Application, private val comicId: String, private val loadLocal: Boolean) : AndroidViewModel(application) {
+class DetailViewModel(application: Application, private val comicId: String) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(DetailUiState())
     val uiState: StateFlow<DetailUiState> = _uiState
@@ -54,11 +54,7 @@ class DetailViewModel(application: Application, private val comicId: String, pri
     private val userTagDao = AppDatabase.getDatabase(application).userTagDao()
 
     init {
-        if (loadLocal) {
-            loadLocalComicDetail()
-        } else {
-            fetchComicDetailFromNetwork()
-        }
+        loadComicDetail()
         checkIfFavorite()
         loadFavoriteFolders()
         loadUserTags() // 加载用户标签状态
@@ -116,7 +112,7 @@ class DetailViewModel(application: Application, private val comicId: String, pri
         }
     }
 
-    private fun loadLocalComicDetail() {
+    private fun loadComicDetail() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             val localDownload = downloadDao.getDownloadById(comicId)

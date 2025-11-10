@@ -90,38 +90,33 @@ fun Hentai1App(viewModel: HomeViewModel) {
                 )
             }
             composable(
-                route = "detail/{comicId}?isLocal={isLocal}", // 修改路由，添加可选的 isLocal 参数
+                route = "detail/{comicId}",
                 arguments = listOf(
-                    navArgument("comicId") { type = NavType.StringType },
-                    navArgument("isLocal") { type = NavType.BoolType; defaultValue = false } // 定义 isLocal 参数
+                    navArgument("comicId") { type = NavType.StringType }
                 )
             ) { backStackEntry ->
                 val comicId = backStackEntry.arguments?.getString("comicId")
-                val isLocal = backStackEntry.arguments?.getBoolean("isLocal") ?: false // 获取 isLocal 参数
                 if (comicId != null) {
                     DetailScreen(
                         comicId = comicId,
-                        onNavigateToReader = { id, isLocalReader -> // 修改 onNavigateToReader 签名
-                            navController.navigate("reader/$id?isLocal=$isLocalReader") // 传递 isLocal 参数
+                        onNavigateToReader = { id ->
+                            navController.navigate("reader/$id")
                         },
                         onNavigateToTagSearch = { query ->
                             navController.navigate("search/$query")
-                        },
-                        isLocal = isLocal // 传递 isLocal 参数
+                        }
                     )
                 }
             }
             composable(
-                route = "reader/{comicId}?isLocal={isLocal}", // 修改路由，添加可选的 isLocal 参数
+                route = "reader/{comicId}",
                 arguments = listOf(
-                    navArgument("comicId") { type = NavType.StringType },
-                    navArgument("isLocal") { type = NavType.BoolType; defaultValue = false } // 定义 isLocal 参数
+                    navArgument("comicId") { type = NavType.StringType }
                 )
             ) {
                 val comicId = it.arguments?.getString("comicId")
-                val isLocal = it.arguments?.getBoolean("isLocal") ?: false // 获取 isLocal 参数
                 if (comicId != null) {
-                    ReaderScreen(comicId = comicId, isLocal = isLocal) // 传递 isLocal 参数
+                    ReaderScreen(comicId = comicId)
                 }
             }
             composable("favorites") {
@@ -168,8 +163,7 @@ fun Hentai1App(viewModel: HomeViewModel) {
             composable("local") {
                 LocalScreen(
                     onNavigateToDetail = { comicId ->
-                        // 修改导航，传递 isLocal = true
-                        navController.navigate("detail/$comicId?isLocal=true")
+                        navController.navigate("detail/$comicId")
                     }
                 )
             }

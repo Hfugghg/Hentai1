@@ -4,7 +4,6 @@ import android.app.Application
 import android.os.Environment
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.exp.hentai1.data.AppDatabase
 import com.exp.hentai1.data.remote.NetworkUtils
 import com.exp.hentai1.data.remote.parser.NextFParser
 import com.exp.hentai1.data.remote.parser.parsePayload6
@@ -20,12 +19,10 @@ data class ReaderUiState(
     val error: String? = null
 )
 
-class ReaderViewModel(application: Application, private val comicId: String, private val isLocal: Boolean) : AndroidViewModel(application) { // 接受 isLocal 参数
+class ReaderViewModel(application: Application, private val comicId: String) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(ReaderUiState())
     val uiState: StateFlow<ReaderUiState> = _uiState
-
-    private val downloadDao = AppDatabase.getDatabase(application).downloadDao()
 
     init {
         fetchReaderContent()
@@ -35,16 +32,11 @@ class ReaderViewModel(application: Application, private val comicId: String, pri
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
-                if (isLocal) {
-                    // 如果明确指定是本地加载，则只尝试本地加载
-                    val localImageUrls = getLocalImageUrls(comicId)
-                    if (localImageUrls.isNotEmpty()) {
-                        _uiState.update { it.copy(isLoading = false, imageUrls = localImageUrls) }
-                    } else {
-                        _uiState.update { it.copy(isLoading = false, error = "本地漫画文件未找到或不完整。") }
-                    }
+                val localImageUrls = getLocalImageUrls(comicId)
+                if (localImageUrls.isNotEmpty()) {
+                    _uiState.update { it.copy(isLoading = false, imageUrls = localImageUrls) }
                 } else {
-                    // 如果不是本地加载，或者本地加载失败，则尝试网络加载
+                    // 如果本地没有，则从网络获取
                     val url = NetworkUtils.viewerUrl(comicId)
                     val html = NetworkUtils.fetchHtml(getApplication(), url)
                     if (html != null && !html.startsWith("Error")) {
