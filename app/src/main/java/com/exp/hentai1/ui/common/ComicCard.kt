@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,7 +88,7 @@ private fun GridComicCardContent(comic: Comic, downloadState: DownloadState?) {
                     modifier = Modifier.align(Alignment.Center)
                 )
                 LinearProgressIndicator(
-                    progress = progress,
+                    progress = { progress }, // progress 现在是 lambda 的返回值
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
@@ -147,7 +148,10 @@ private fun ListComicCardContent(
             when (downloadState) {
                 is DownloadState.Downloading -> {
                     val progress = downloadState.downloadedPages.toFloat() / downloadState.totalPages
-                    LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
+                    LinearProgressIndicator(
+                        progress = { progress }, // <-- 修改在这里
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "下载中... ${downloadState.downloadedPages} / ${downloadState.totalPages}",

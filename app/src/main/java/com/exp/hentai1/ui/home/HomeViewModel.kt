@@ -16,12 +16,19 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+// <--- 修复: 新增 LoadedPage 数据类
+data class LoadedPage(
+    val page: Int,
+    val comics: List<Comic>
+)
+
 data class HomeUiState(
     val isLoading: Boolean = true,
     val rankingComics: List<Comic> = emptyList(),
-    val latestComics: List<Comic> = emptyList(),
+    // 替换为结构化的 loadedPages
+    val loadedPages: List<LoadedPage> = emptyList(),
     val error: String? = null,
-    val currentPage: Int = 1, // 当前加载的最新漫画页码
+    val currentPage: Int = 1, // 当前加载的最新漫画页码 (用于追踪下次加载哪一页)
     val isLoadingMore: Boolean = false, // 是否正在加载更多最新漫画
     val canLoadMore: Boolean = true, // 是否还有更多最新漫画可以加载
     val mainListScrollIndex: Int = 0, // 主列表滚动位置：第一个可见项的索引
@@ -34,7 +41,7 @@ data class HomeUiState(
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     // 为每个站点维护一个独立的UI状态
-    private val _siteStates: MutableMap<HentaiOneSite, MutableStateFlow<HomeUiState>> = 
+    private val _siteStates: MutableMap<HentaiOneSite, MutableStateFlow<HomeUiState>> =
         HentaiOneSite.entries.associateWith { MutableStateFlow(HomeUiState()) }.toMutableMap()
 
     // 当前选中的站点
@@ -66,14 +73,16 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
         // 如果新站点的数据尚未加载，则触发加载
         val currentSiteState = _siteStates.getValue(newSite).value
-        if (currentSiteState.isLoading && currentSiteState.rankingComics.isEmpty() && currentSiteState.latestComics.isEmpty()) {
+        // 检查 loadedPages 是否为空
+        if (currentSiteState.isLoading && currentSiteState.loadedPages.isEmpty() && currentSiteState.rankingComics.isEmpty()) {
             fetchAllComics(newSite)
         }
     }
 
     fun fetchAllComics(site: HentaiOneSite) {
         viewModelScope.launch {
-            _siteStates.getValue(site).update { it.copy(isLoading = true, error = null) }
+            // 清空 loadedPages
+            _siteStates.getValue(site).update { it.copy(isLoading = true, error = null, loadedPages = emptyList()) }
             try {
                 // 确保NetworkUtils已设置为正确的站点
                 NetworkUtils.setSite(site)
@@ -86,17 +95,26 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 val latestResult = latestDeferred.await()
 
                 // 检查是否有任何一个请求失败
-                val firstError = rankingResult.exceptionOrNull()?.message ?: latestResult.exceptionOrNull()?.message
+                val firstError =
+                    rankingResult.exceptionOrNull()?.message ?: latestResult.exceptionOrNull()?.message
 
                 if (firstError != null) {
                     _siteStates.getValue(site).update { it.copy(isLoading = false, error = firstError) }
                 } else {
                     val latestComicsList = latestResult.getOrNull() ?: emptyList()
+
+                    // 将第一页数据结构化
+                    val newLoadedPages = if (latestComicsList.isNotEmpty()) {
+                        listOf(LoadedPage(page = 1, comics = latestComicsList))
+                    } else {
+                        emptyList()
+                    }
+
                     _siteStates.getValue(site).update {
                         it.copy(
                             isLoading = false,
                             rankingComics = rankingResult.getOrNull() ?: emptyList(),
-                            latestComics = latestComicsList,
+                            loadedPages = newLoadedPages, // <--- 使用 newLoadedPages
                             currentPage = 1,
                             canLoadMore = latestComicsList.isNotEmpty()
                         )
@@ -104,7 +122,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                _siteStates.getValue(site).update { it.copy(isLoading = false, error = e.message ?: "未知错误") }
+                _siteStates.getValue(site)
+                    .update { it.copy(isLoading = false, error = e.message ?: "未知错误") }
             }
         }
     }
@@ -147,20 +166,77 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 val nextPage = currentUiState.currentPage + 1
                 val newComics = fetchLatestComics(nextPage).getOrNull() ?: emptyList()
 
+                // 将新数据添加到 loadedPages 列表
+                val newLoadedPage = if (newComics.isNotEmpty()) {
+                    LoadedPage(page = nextPage, comics = newComics)
+                } else null
+
                 _siteStates.getValue(currentSiteValue).update { currentState ->
                     currentState.copy(
-                        latestComics = currentState.latestComics + newComics,
-                        currentPage = nextPage,
+                        loadedPages = currentState.loadedPages + listOfNotNull(newLoadedPage), // <--- 追加新的 LoadedPage
+                        currentPage = if (newComics.isNotEmpty()) nextPage else currentState.currentPage,
                         isLoadingMore = false,
                         canLoadMore = newComics.isNotEmpty()
                     )
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                _siteStates.getValue(currentSiteValue).update { it.copy(isLoadingMore = false, error = e.message ?: "加载更多失败") }
+                _siteStates.getValue(currentSiteValue)
+                    .update { it.copy(isLoadingMore = false, error = e.message ?: "加载更多失败") }
             }
         }
     }
+
+    fun loadLatestComicsByPage(page: Int) {
+        val currentSiteValue = _currentSite.value
+        // 只清空 loadedPages，保持 rankingComics 不变
+        _siteStates.getValue(currentSiteValue).update {
+            it.copy(
+                isLoading = true,
+                error = null,
+                loadedPages = emptyList(), // 清空已加载的页面数据
+                currentPage = page // <--- 新增: 在开始加载前就更新 currentPage，确保加载指示器显示正确页码
+            )
+        }
+
+        viewModelScope.launch {
+            try {
+                NetworkUtils.setSite(currentSiteValue)
+                val result = fetchLatestComics(page)
+                val newComics = result.getOrNull()
+
+                if (newComics != null) {
+                    val newLoadedPages = if (newComics.isNotEmpty()) {
+                        listOf(LoadedPage(page = page, comics = newComics)) // <--- 创建新 LoadedPage 列表
+                    } else emptyList()
+
+                    _siteStates.getValue(currentSiteValue).update {
+                        it.copy(
+                            isLoading = false,
+                            loadedPages = newLoadedPages, // <--- 替换为新列表
+                            currentPage = page, // <--- 确认加载的页码
+                            // 修正: 即使只加载了一页，如果该页有内容，理论上还可以加载下一页
+                            canLoadMore = newComics.isNotEmpty()
+                        )
+                    }
+                } else {
+                    _siteStates.getValue(currentSiteValue).update {
+                        it.copy(
+                            isLoading = false,
+                            error = result.exceptionOrNull()?.message ?: "加载指定页码失败",
+                            canLoadMore = false // 加载失败，停止加载更多
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _siteStates.getValue(currentSiteValue).update {
+                    it.copy(isLoading = false, error = e.message ?: "未知错误", canLoadMore = false)
+                }
+            }
+        }
+    }
+
 
     fun updateMainListScrollPosition(site: HentaiOneSite, index: Int, offset: Int) {
         _siteStates.getValue(site).update {

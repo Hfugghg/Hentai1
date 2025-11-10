@@ -2,6 +2,7 @@ package com.exp.hentai1.ui.detail
 
 import android.app.Application
 import android.os.Environment
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.Data
@@ -13,6 +14,7 @@ import com.exp.hentai1.data.remote.parser.ComicDataParser
 import com.exp.hentai1.data.remote.parser.NextFParser
 import com.exp.hentai1.data.remote.parser.parsePayload6
 import com.exp.hentai1.data.AppDatabase
+import com.exp.hentai1.data.remote.parser.NextFParser.TAG
 import com.exp.hentai1.worker.DownloadWorker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -246,12 +248,35 @@ class DetailViewModel(application: Application, private val comicId: String) : A
             try {
                 val url = NetworkUtils.viewerUrl(comicId)
                 val html = NetworkUtils.fetchHtml(getApplication(), url)
+
                 if (html != null && !html.startsWith("Error")) {
+                    var imageUrls: List<String> = emptyList()
                     val payloads = NextFParser.extractPayloadsFromHtml(html)
                     val payload6 = payloads["6"]
+
+                    // --- 1. 尝试 Next.js Payload 6 解析 ---
                     if (payload6 != null) {
-                        val imageUrls = parsePayload6(payload6)
+                        try {
+                            imageUrls = parsePayload6(payload6)
+                            Log.i(TAG, "Payload 6 解析成功，找到 ${imageUrls.size} 张图片。")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Payload 6 解析失败：${e.message}。回退到 Jsoup 备用。", e)
+                            // imageUrls 保持 emptyList()，流程继续到 Jsoup 备用
+                        }
+                    }
+
+                    // --- 2. Jsoup 备用逻辑 ---
+                    if (imageUrls.isEmpty()) {
+                        Log.w(TAG, "Payload 6 丢失或解析失败。开始 Jsoup 备用解析...")
+                        // 假设有一个名为 parseImagesFromHtmlStructure 的 Jsoup 备用函数，暂时还没做//TODO
+//                        imageUrls = parseImagesFromHtmlStructure(html)
+                        Log.i(TAG, "Jsoup 备用解析完成，找到 ${imageUrls.size} 张图片。")
+                    }
+
+                    // --- 3. 结果检查与下载启动 ---
+                    if (imageUrls.isNotEmpty()) {
                         val currentComic = _uiState.value.comic
+
                         if (currentComic != null) {
                             val completeComic = currentComic.copy(imageList = imageUrls)
 
@@ -272,13 +297,14 @@ class DetailViewModel(application: Application, private val comicId: String) : A
                                 categories = completeComic.categories
                             )
                             downloadDao.insert(downloadEntry)
-
                             startDownloadWorker(completeComic)
+
                         } else {
-                             _uiState.update { it.copy(error = "漫画数据为空，无法开始下载") }
+                            _uiState.update { it.copy(error = "漫画数据为空，无法开始下载") }
                         }
                     } else {
-                        _uiState.update { it.copy(error = "未能为下载获取图片列表") }
+                        // Payload 6 和 Jsoup 备用均失败
+                        _uiState.update { it.copy(error = "未能获取图片列表，下载失败。") }
                     }
                 } else {
                     _uiState.update { it.copy(error = html ?: "未能获取下载数据") }

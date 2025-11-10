@@ -21,7 +21,7 @@ class ComicDataParser {
          * 2. 使用 Jsoup 直接从HTML的DOM结构中提取漫画信息作为备用。
          *
          * @param html 完整的HTML页面源字符串。
-         * @return 从HTML DOM结构中解析出的 [com.exp.hentai1.data.Comic] 列表。
+         * @return 从HTML DOM结构中解析出的 [Comic] 列表。
          */
         fun parseLatestComics(html: String): List<Comic> {
             Log.d(TAG, "[parseLatestComics] 开始解析HTML，长度: ${html.length}")
@@ -64,15 +64,49 @@ class ComicDataParser {
         }
 
         fun parseRankingComics(html: String): List<Comic> {
+            var comics: List<Comic>
+
+            // 1. 尝试使用 NextFParser 提取并解析 script 中的数据
             try {
                 val payloads = NextFParser.extractPayloadsFromHtml(html)
-                payloads["18"]?.let { payload ->
-                    return parsePayload18(payload)
+                val payload18 = payloads["18"]
+
+                if (payload18 != null) {
+                    try {
+                        // 尝试解析 Payload 18
+                        comics = parsePayload18(payload18)
+                        Log.i(TAG, "[parseRankingComics] 成功从 Payload 18 解析到 ${comics.size} 个漫画。")
+
+                        // 如果成功解析到结果，则优先返回
+                        if (comics.isNotEmpty()) {
+                            return comics
+                        }
+                    } catch (e: Exception) {
+                        // Payload 18 解析失败，记录错误并继续执行 Jsoup 备用逻辑
+                        Log.e(TAG, "[parseRankingComics] parsePayload18 失败，将回退到 Jsoup：${e.message}", e)
+                    }
+                } else {
+                    // Payload 18 丢失，继续执行 Jsoup 备用逻辑
+                    Log.w(TAG, "[parseRankingComics] Payload 18 丢失，将回退到 Jsoup。")
                 }
+
             } catch (e: Exception) {
-                Log.e(TAG, "[parseRankingComics] 使用 NextFParser 解析 script 数据时出错: ${e.message}", e)
+                // NextFParser 提取过程发生致命错误，记录错误并继续执行 Jsoup 备用逻辑
+                Log.e(TAG, "[parseRankingComics] 使用 NextFParser 提取 Payload 时出错，将回退到 Jsoup: ${e.message}", e)
             }
-            return emptyList()
+
+            // 2. Jsoup 备用逻辑：从 HTML 结构中提取
+            Log.w(TAG, "[parseRankingComics] Next.js payloads 解析失败/丢失，尝试使用 Jsoup 解析HTML结构。")
+//            return try {
+//                // 假设有一个名为 extractRankingComicsFromHtmlStructure 的 Jsoup 备用函数TODO
+//                val comicsFromHtml = extractRankingComicsFromHtmlStructure(html)
+//                Log.i(TAG, "[parseRankingComics] 从 HTML 结构中解析到 ${comicsFromHtml.size} 个漫画。")
+//                comicsFromHtml
+//            } catch (e: Exception) {
+//                Log.e(TAG, "[parseRankingComics] 使用 Jsoup 备用解析失败: ${e.message}", e)
+//                emptyList()
+//            }
+            return TODO("提供返回值")
         }
 
         fun parseFavoritesComics(html: String): List<Comic> {

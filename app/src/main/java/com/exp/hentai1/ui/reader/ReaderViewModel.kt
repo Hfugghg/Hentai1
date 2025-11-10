@@ -2,10 +2,12 @@ package com.exp.hentai1.ui.reader
 
 import android.app.Application
 import android.os.Environment
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.exp.hentai1.data.remote.NetworkUtils
 import com.exp.hentai1.data.remote.parser.NextFParser
+import com.exp.hentai1.data.remote.parser.NextFParser.TAG
 import com.exp.hentai1.data.remote.parser.parsePayload6
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,11 +44,30 @@ class ReaderViewModel(application: Application, private val comicId: String) : A
                     if (html != null && !html.startsWith("Error")) {
                         val payloads = NextFParser.extractPayloadsFromHtml(html)
                         val payload6 = payloads["6"]
+                        var imageUrls: List<String> = emptyList()
+
+                        // 尝试 Next.js Payload 解析
                         if (payload6 != null) {
-                            val imageUrls = parsePayload6(payload6)
+                            try {
+                                imageUrls = parsePayload6(payload6)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "parsePayload6 失败，尝试 Jsoup 备用", e)
+                                // 失败后 imageUrls 保持 emptyList()
+                            }
+                        }
+
+                        // --- Jsoup 备用逻辑 ---
+                        if (imageUrls.isEmpty()) {
+                            Log.w(TAG, "Next.js Payload 6 丢失或解析失败，回退到 Jsoup 解析。")
+                            // 假设有一个 Jsoup 备用函数，暂时还没做TODO
+//                            imageUrls = parseImagesFromHtmlStructure(html)
+                        }
+                        // -----------------------
+
+                        if (imageUrls.isNotEmpty()) {
                             _uiState.update { it.copy(isLoading = false, imageUrls = imageUrls) }
                         } else {
-                            _uiState.update { it.copy(isLoading = false, error = "未能找到图片链接数据 (Payload 6 is missing)") }
+                            _uiState.update { it.copy(isLoading = false, error = "未能找到图片链接数据 (Payload 6 & Jsoup 备用均失败)") }
                         }
                     } else {
                         _uiState.update { it.copy(isLoading = false, error = html ?: "未能获取到阅读链接") }

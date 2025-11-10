@@ -19,10 +19,12 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.exp.hentai1.data.Comic
 import com.exp.hentai1.data.remote.HentaiOneSite
+import com.exp.hentai1.data.remote.parser.getLastParsedPage
 import com.exp.hentai1.ui.common.AppDrawer
 import com.exp.hentai1.ui.common.ComicCard
 import com.exp.hentai1.ui.common.ComicCardStyle
@@ -46,6 +48,10 @@ fun HomeScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val (searchText, setSearchText) = remember { mutableStateOf("") }
+    val lastPage = remember { mutableStateOf<Int?>(null) } // <--- 新增: 存储 lastPage
+
+    // 控制页码输入弹窗的显示状态
+    val showPageInputDialog = remember { mutableStateOf(false) }
 
     // 为每个站点统一管理 LazyListState，以在切换后恢复滚动位置
     val mainListStates = remember { HentaiOneSite.entries.associateWith { LazyListState() } }
@@ -54,12 +60,14 @@ fun HomeScreen(
     val currentRankingListState = rankingListStates[currentSite]!!
 
     // 当站点切换且数据加载完毕后，恢复滚动位置
-    LaunchedEffect(currentSite, uiState.latestComics, uiState.rankingComics) {
+    LaunchedEffect(currentSite, uiState.loadedPages, uiState.rankingComics) { // <--- 修复：使用 uiState.loadedPages
         // 只有当数据实际存在时才滚动，避免在空列表上操作
-        if (uiState.latestComics.isNotEmpty()) {
+        if (uiState.loadedPages.isNotEmpty()) { // <--- 修复：使用 uiState.loadedPages
             scope.launch {
                 currentMainListState.scrollToItem(uiState.mainListScrollIndex, uiState.mainListScrollOffset)
             }
+            // <--- 新增: 当漫画列表更新时，获取 lastPage
+            lastPage.value = getLastParsedPage()
         }
         if (uiState.rankingComics.isNotEmpty()) {
             scope.launch {
@@ -137,7 +145,7 @@ fun HomeScreen(
                 TopAppBar(
                     windowInsets = WindowInsets(0, 0, 0, 0),
                     title = {
-                        // 使用 BasicTextField 来自定义搜索框，以精确控制内边距和高度
+                        // 使用 BasicTextField 自定义搜索框，以精确控制内边距和高度
                         BasicTextField(
                             value = searchText,
                             onValueChange = setSearchText,
@@ -230,7 +238,7 @@ fun HomeScreen(
                     else -> {
                         // 为了防止因数据源中可能存在的重复ID导致应用崩溃，在渲染列表前先进行去重。
                         val distinctRankingComics = uiState.rankingComics.distinctBy { it.id }
-                        val distinctLatestComics = uiState.latestComics.distinctBy { it.id }
+                        // 注意：我们直接使用 uiState.loadedPages，并在其内部的 items 块中去重。
 
                         LazyColumn(
                             modifier = modifier.fillMaxSize(),
@@ -253,19 +261,27 @@ fun HomeScreen(
 
                             item {
                                 Spacer(modifier = Modifier.height(24.dp))
-                                SectionTitle("每日更新", Modifier.padding(horizontal = 16.dp))
+                                // <--- 修改点: 传递 lastPage 并添加点击事件
+                                SectionTitle(
+                                    title = "每日更新",
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                    extraText = lastPage.value?.let { "共 $it 页" },
+                                    onExtraTextClick = { showPageInputDialog.value = true } // 点击页数时显示弹窗
+                                )
                                 Spacer(modifier = Modifier.height(8.dp))
                             }
 
                             // 每日更新 Section
                             latestUpdatesSection(
-                                comics = distinctLatestComics, // 使用去重后的列表
+                                loadedPages = uiState.loadedPages, // <--- 修复：直接传递结构化的 loadedPages
                                 onComicClick = onComicClick
                             )
 
 
                             // 加载更多或没有更多数据的提示
                             item {
+                                // 重新计算 distinctLatestComics 用于底部提示的判断
+                                val distinctLatestComics = uiState.loadedPages.flatMap { it.comics }.distinctBy { it.id }
                                 if (uiState.isLoadingMore) {
                                     CenteredIndicatorWithText(
                                         text = "正在加载更多，请稍候...",
@@ -289,6 +305,21 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    // 页码输入弹窗
+    if (showPageInputDialog.value) {
+        PageInputDialog(
+            maxPage = lastPage.value ?: 1, // 如果没有获取到最大页数，默认为1
+            onDismiss = { showPageInputDialog.value = false },
+            onPageSelected = { page ->
+                viewModel.loadLatestComicsByPage(page)
+                showPageInputDialog.value = false
+                scope.launch {
+                    currentMainListState.scrollToItem(0) // 跳转到指定页后滚动到顶部
+                }
+            }
+        )
     }
 }
 
@@ -349,7 +380,13 @@ fun SiteSwitchBar(
 }
 
 @Composable
-fun SectionTitle(title: String, modifier: Modifier = Modifier, onMoreClick: (() -> Unit)? = null) {
+fun SectionTitle(
+    title: String,
+    modifier: Modifier = Modifier,
+    onMoreClick: (() -> Unit)? = null,
+    extraText: String? = null, // <--- 新增: 额外的文本
+    onExtraTextClick: (() -> Unit)? = null // <--- 新增: 额外文本的点击事件
+) {
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -360,11 +397,20 @@ fun SectionTitle(title: String, modifier: Modifier = Modifier, onMoreClick: (() 
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
         )
-        onMoreClick?.let {
+
+        // <--- 修改点: 显示 "更多" 或 extraText，并处理 extraText 的点击事件
+        if (onMoreClick != null) {
             Text(
                 text = "更多",
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clickable(onClick = it)
+                modifier = Modifier.clickable(onClick = onMoreClick)
+            )
+        } else if (extraText != null) {
+            Text(
+                text = extraText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary, // 让页数文本也使用主题色，表示可点击
+                modifier = Modifier.clickable(enabled = onExtraTextClick != null, onClick = { onExtraTextClick?.invoke() })
             )
         }
     }
@@ -409,27 +455,95 @@ fun RankingSection(comics: List<Comic>, onComicClick: (String) -> Unit, rankingL
     }
 }
 
+// *** 删除旧的、错误的 latestUpdatesSection 函数 ***
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PageInputDialog(
+    maxPage: Int,
+    onDismiss: () -> Unit,
+    onPageSelected: (Int) -> Unit
+) {
+    var pageInput by remember { mutableStateOf("") }
+    var isError by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("跳转到指定页") },
+        text = {
+            Column {
+                Text("当前最大页数: $maxPage")
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = pageInput,
+                    onValueChange = { newValue ->
+                        pageInput = newValue
+                        isError = false // 每次输入改变时重置错误状态
+                    },
+                    label = { Text("页码") },
+                    isError = isError,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(onDone = {
+                        val page = pageInput.toIntOrNull()
+                        if (page != null && page > 0 && page <= maxPage) {
+                            onPageSelected(page)
+                        } else {
+                            isError = true
+                        }
+                    }),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (isError) {
+                    Text(
+                        text = "请输入 1 到 $maxPage 之间的有效页码",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val page = pageInput.toIntOrNull()
+                    if (page != null && page > 0 && page <= maxPage) {
+                        onPageSelected(page)
+                    } else {
+                        isError = true
+                    }
+                }
+            ) {
+                Text("确定")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
 /**
  * 每日更新列表的扩展函数，用于在 LazyColumn 中构建分页内容。
  */
 private fun LazyListScope.latestUpdatesSection(
-    comics: List<Comic>,
+    loadedPages: List<LoadedPage>, // <--- 修复：接收结构化的 LoadedPage 列表
     onComicClick: (String) -> Unit
 ) {
-    // 计算每个“页面”的起始索引，以便正确显示分页隔条
-    val comicsPerPage = 30 // 假设每页显示30个漫画，与后端逻辑或UI设计保持一致
-    val totalPages = (comics.size + comicsPerPage - 1) / comicsPerPage
+    if (loadedPages.isEmpty()) return
 
-    if (comics.isEmpty()) return
-
-    for (pageIndex in 0 until totalPages) {
-        val startIdx = pageIndex * comicsPerPage
-        val endIdx = (startIdx + comicsPerPage).coerceAtMost(comics.size)
-        val pageComics = comics.subList(startIdx, endIdx)
-
+    // 遍历每一个已加载的页面
+    loadedPages.forEach { loadedPage -> // <--- 核心修改：遍历 loadedPages
+        // 1. 插入分页条
         item {
+            // 直接使用 LoadedPage 中存储的 page 属性作为页码
             Text(
-                text = "--- 第 ${pageIndex + 1} 页 --- ",
+                text = "--- 第 ${loadedPage.page} 页 --- ", // <--- 修复：使用 loadedPage.page，确保页码与数据块匹配
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -437,7 +551,9 @@ private fun LazyListScope.latestUpdatesSection(
                 textAlign = TextAlign.Center
             )
         }
-        items(pageComics, key = { "latest-${it.id}" }) { comic -> // 为 key 添加前缀以避免与排行中的 key 冲突
+
+        // 2. 插入当前页的漫画列表
+        items(loadedPage.comics.distinctBy { it.id }, key = { "latest-${it.id}" }) { comic -> // <--- 修复：遍历 loadedPage.comics 并去重
             ComicCard(
                 comic = comic,
                 style = ComicCardStyle.LIST,

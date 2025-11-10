@@ -6,6 +6,17 @@ import com.exp.hentai1.data.remote.parser.NextFParser.TAG
 import com.exp.hentai1.data.remote.parser.NextFParser.cleanPayloadString
 import org.json.JSONArray
 
+// --- 新增: 用于存储最近一次解析的 lastPage ---
+private var lastParsedPage: Int? = null
+
+/**
+ * 获取最近一次由 parseComicList 解析出的 "last page"
+ */
+fun getLastParsedPage(): Int? {
+    return lastParsedPage
+}
+// -----------------------------------------
+
 /**
  * 解析数据块 7:
  * 此函数现在可以处理多种结构,并将解析任务分派给相应的辅助函数。
@@ -44,8 +55,7 @@ fun parsePayload7(payload: String): List<Comic> {
                     Log.i(TAG, "[7] 回退到 [新着漫画列表] 逻辑。")
 
                     // 必须传递 topArray 才能解析分页
-                    // 原始: parseComicList(secondElement, comics)
-                    parseComicList(topArray, comics)
+                    lastParsedPage = parseComicList(topArray, comics) // <--- 修改点: 存储返回值
                     return comics
                 }
 
@@ -128,8 +138,7 @@ fun parsePayload7(payload: String): List<Comic> {
                     Log.i(TAG, "[7] 检测到 [新着漫画列表] 结构 (Title: '$listTitle', 未匹配到排行关键词)。")
 
                     // 必须传递 topArray 才能解析分页
-                    // 原始: parseComicList(secondElement, comics)
-                    parseComicList(topArray, comics)
+                    lastParsedPage = parseComicList(topArray, comics) // <--- 修改点: 存储返回值
                 }
             }
 
