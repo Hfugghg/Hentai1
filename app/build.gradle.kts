@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     id("kotlin-kapt")
     alias(libs.plugins.androidx.room)
+    alias(libs.plugins.aboutLibraries)
+
 }
 
 android {
@@ -24,11 +26,12 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isDebuggable = false // 显式设置以确保
+            isMinifyEnabled = false //
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
-            )
+            ) //
         }
     }
     compileOptions {
@@ -48,10 +51,10 @@ room {
 }
 
 dependencies {
-    implementation("androidx.navigation:navigation-compose:2.7.7")
+    implementation("androidx.navigation:navigation-compose:2.9.6")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jsoup:jsoup:1.21.2")
-    implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("io.coil-kt:coil-compose:2.7.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -62,6 +65,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.foundation.layout)
     implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.ui)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -70,9 +74,9 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
-    implementation("androidx.room:room-runtime:2.8.3") // 请使用您 libs.versions.toml 中的最新版本
-    kapt("androidx.room:room-compiler:2.8.3") // 请使用您 libs.versions.toml 中的最新版本
-    implementation("androidx.room:room-ktx:2.8.3") // 请使用您 libs.versions.toml 中的最新版本
+    implementation(libs.androidx.room.runtime)
+    kapt(libs.androidx.room.compiler)
+    implementation(libs.androidx.room.ktx)
     implementation("com.google.code.gson:gson:2.13.2")
 
     // 添加 Material 核心图标库
@@ -81,4 +85,11 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.extended)
 
     implementation("androidx.compose.runtime:runtime-livedata:1.9.4")
+
+    implementation(libs.aboutlibraries)
+    implementation(libs.aboutlibraries.compose.m3)
+
+    // 如果你想要更多图标支持，可以添加 Material Icons Extended
+    implementation(libs.androidx.compose.material.icons.extended)
+
 }

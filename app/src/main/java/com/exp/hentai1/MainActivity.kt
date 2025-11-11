@@ -24,6 +24,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.exp.hentai1.data.cache.AppCache
 import com.exp.hentai1.data.remote.NetworkUtils
+import com.exp.hentai1.ui.about.AboutScreen
 import com.exp.hentai1.ui.detail.DetailScreen
 import com.exp.hentai1.ui.favorites.FavoritesScreen
 import com.exp.hentai1.ui.home.HomeScreen
@@ -166,6 +167,9 @@ fun Hentai1App(viewModel: HomeViewModel) {
                         navController.navigate("detail/$comicId")
                     }
                 )
+            }
+            composable("about") {
+                AboutScreen()
             }
         }
     }

@@ -53,7 +53,10 @@ fun AppDrawer(
         MenuItem("收藏", Icons.Default.Favorite),
 
         // "设置": Settings (核心库)
-        MenuItem("设置", Icons.Default.Settings)
+        MenuItem("设置", Icons.Default.Settings),
+
+        // "关于": Info (核心库)
+        MenuItem("关于", Icons.Default.Info)
     )
 
     Column(

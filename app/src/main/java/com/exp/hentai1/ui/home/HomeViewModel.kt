@@ -1,12 +1,16 @@
 package com.exp.hentai1.ui.home
 
 import android.app.Application
+import android.content.Context
+import android.content.SharedPreferences
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.exp.hentai1.data.Comic
 import com.exp.hentai1.data.remote.HentaiOneSite
 import com.exp.hentai1.data.remote.NetworkUtils
 import com.exp.hentai1.data.remote.parser.ComicDataParser
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -57,11 +61,24 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         _siteStates.getValue(HentaiOneSite.MAIN).value // 初始值
     )
 
+    // --- 搜索记录相关 ---
+    private val SEARCH_HISTORY_KEY = "search_history"
+    private val MAX_SEARCH_HISTORY_SIZE = 30
+    private val sharedPreferences: SharedPreferences =
+        application.getSharedPreferences("hentai1_prefs", Context.MODE_PRIVATE)
+    private val gson = Gson()
+
+    private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
+    val searchHistory: StateFlow<List<String>> = _searchHistory
+    // --- 搜索记录相关 ---
+
     init {
         // 设置初始站点给NetworkUtils
         NetworkUtils.setSite(HentaiOneSite.MAIN)
         // 为初始站点加载数据
         fetchAllComics(HentaiOneSite.MAIN)
+        // 加载搜索历史
+        loadSearchHistory()
     }
 
     // 切换站点的方法
@@ -249,4 +266,47 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(rankingListScrollIndex = index, rankingListScrollOffset = offset)
         }
     }
+
+    // --- 搜索记录功能实现 ---
+    private fun loadSearchHistory() {
+        val json = sharedPreferences.getString(SEARCH_HISTORY_KEY, null)
+        if (json != null) {
+            val type = object : TypeToken<List<String>>() {}.type
+            _searchHistory.value = gson.fromJson(json, type)
+        }
+    }
+
+    private fun saveSearchHistory(history: List<String>) {
+        val json = gson.toJson(history)
+        sharedPreferences.edit().putString(SEARCH_HISTORY_KEY, json).apply()
+    }
+
+    fun addSearchHistory(query: String) {
+        val trimmedQuery = query.trim()
+        if (trimmedQuery.isBlank()) return
+
+        val currentHistory = _searchHistory.value.toMutableList()
+        currentHistory.remove(trimmedQuery) // 移除旧的，确保新搜索的在最前面
+        currentHistory.add(0, trimmedQuery) // 添加到最前面
+
+        if (currentHistory.size > MAX_SEARCH_HISTORY_SIZE) {
+            currentHistory.removeAt(currentHistory.size - 1) // 移除末尾的旧记录
+        }
+        _searchHistory.value = currentHistory
+        saveSearchHistory(currentHistory)
+    }
+
+    fun clearSearchHistory() {
+        _searchHistory.value = emptyList()
+        saveSearchHistory(emptyList())
+    }
+
+    fun removeSearchHistoryItem(item: String) {
+        val currentHistory = _searchHistory.value.toMutableList()
+        if (currentHistory.remove(item)) {
+            _searchHistory.value = currentHistory
+            saveSearchHistory(currentHistory)
+        }
+    }
+    // --- 搜索记录功能实现 ---
 }
