@@ -55,6 +55,31 @@ object NetworkUtils {
 
     @Volatile private var isSolvingChallenge = false
 
+    /**
+     * 新增: 探测指定 comicId 存在于哪个站点。
+     * 它会按顺序检查所有站点，并返回第一个成功获取到 HTML 的站点。
+     * 此函数会调用 fetchHtml，因此它能处理 Cloudflare 质询。
+     */
+    suspend fun findComicSite(context: Context, comicId: String): HentaiOneSite? = withContext(Dispatchers.IO) {
+        // 按 HentaiOneSite.entries (MAIN, CHINESE, ENGLISH) 顺序尝试
+        for (site in HentaiOneSite.entries) {
+            val url = "${site.baseUrl}/articles/$comicId"
+            try {
+                // 使用现有的 fetchHtml，因为它已经处理了 Cloudflare
+                val html = fetchHtml(context, url)
+                if (html != null && !html.startsWith("Error")) {
+                    // 成功获取到 HTML，说明此站点存在该 ID
+                    return@withContext site
+                }
+            } catch (e: Exception) {
+                // 发生网络错误等，继续尝试下一个站点
+                e.printStackTrace()
+            }
+        }
+        // 尝试了所有站点均未找到
+        return@withContext null
+    }
+
     suspend fun fetchHtml(context: Context, url: String): String? = withContext(Dispatchers.IO) {
         if (isSolvingChallenge) return@withContext null // 防止重入调用
 

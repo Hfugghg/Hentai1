@@ -12,13 +12,9 @@ import com.exp.hentai1.data.remote.parser.ComicDataParser
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import androidx.core.content.edit
 
 // <--- 修复: 新增 LoadedPage 数据类
 data class LoadedPage(
@@ -47,6 +43,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     // 为每个站点维护一个独立的UI状态
     private val _siteStates: MutableMap<HentaiOneSite, MutableStateFlow<HomeUiState>> =
         HentaiOneSite.entries.associateWith { MutableStateFlow(HomeUiState()) }.toMutableMap()
+
+    // 使用 SharedFlow 来处理一次性导航事件
+    private val _navigateToDetail = MutableSharedFlow<String>()
+    val navigateToDetail: SharedFlow<String> = _navigateToDetail.asSharedFlow()
 
     // 当前选中的站点
     private val _currentSite = MutableStateFlow(HentaiOneSite.MAIN)
@@ -79,6 +79,37 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         fetchAllComics(HentaiOneSite.MAIN)
         // 加载搜索历史
         loadSearchHistory()
+    }
+
+    // --- 新增: 处理ID搜索的函数 ---
+    fun findAndNavigateToComicId(comicId: String) {
+        // 记住用户当前所在的站点
+        val originalSite = _currentSite.value
+
+        // 在当前站点UI上显示加载状态
+        _siteStates.getValue(originalSite).update { it.copy(isLoading = true, error = null) }
+
+        viewModelScope.launch {
+            // 1. 调用 NetworkUtils 查找漫画在哪
+            val foundSite = NetworkUtils.findComicSite(getApplication(), comicId)
+
+            if (foundSite != null) {
+                // 2. 找到了！临时设置全局站点
+                // DetailViewModel 将会使用这个站点来加载
+                NetworkUtils.setSite(foundSite)
+
+                // 3. 触发导航事件
+                _navigateToDetail.emit(comicId)
+
+                // 4. 导航后，取消当前站点的加载状态
+                _siteStates.getValue(originalSite).update { it.copy(isLoading = false) }
+            } else {
+                // 5. 未找到，在当前站点显示错误信息
+                _siteStates.getValue(originalSite).update {
+                    it.copy(isLoading = false, error = "未在任何站点找到漫画ID: $comicId")
+                }
+            }
+        }
     }
 
     // 切换站点的方法
@@ -278,7 +309,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun saveSearchHistory(history: List<String>) {
         val json = gson.toJson(history)
-        sharedPreferences.edit().putString(SEARCH_HISTORY_KEY, json).apply()
+        sharedPreferences.edit { putString(SEARCH_HISTORY_KEY, json) }
     }
 
     fun addSearchHistory(query: String) {

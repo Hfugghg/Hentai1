@@ -14,9 +14,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,6 +28,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -45,6 +44,12 @@ import com.exp.hentai1.ui.home.HomeComponents.SiteSwitchBar
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+
+// --- 新增：搜索模式 ---
+private enum class SearchMode {
+    TEXT,
+    ID
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,6 +78,11 @@ fun HomeScreen(
     var searchBarWidth by remember { mutableStateOf(0.dp) }
     val density = LocalDensity.current
 
+    // --- 新增：搜索模式状态 ---
+    var searchMode by remember { mutableStateOf(SearchMode.TEXT) }
+    var showSearchModeMenu by remember { mutableStateOf(false) }
+    // ---
+
     // 为每个站点统一管理 LazyListState
     val mainListStates = remember { HentaiOneSite.entries.associateWith { LazyListState() } }
     val rankingListStates = remember { HentaiOneSite.entries.associateWith { LazyListState() } }
@@ -82,6 +92,14 @@ fun HomeScreen(
     // --- 新增：滚动时清除焦点 ---
     val isMainListScrolling by remember { derivedStateOf { currentMainListState.isScrollInProgress } }
     val isRankingListScrolling by remember { derivedStateOf { currentRankingListState.isScrollInProgress } }
+
+    // --- 新增：监听来自 ViewModel 的导航事件 ---
+    LaunchedEffect(viewModel.navigateToDetail) {
+        viewModel.navigateToDetail.collect { comicId ->
+            // 收到事件，执行导航
+            onComicClick(comicId)
+        }
+    }
 
     LaunchedEffect(isMainListScrolling, isRankingListScrolling) {
         if (isMainListScrolling || isRankingListScrolling) {
@@ -186,8 +204,9 @@ fun HomeScreen(
                                 value = searchText,
                                 onValueChange = {
                                     setSearchText(it)
-                                    // 当用户输入时，隐藏历史记录
-                                    showSearchHistoryDropdown.value = it.isEmpty() && searchHistory.isNotEmpty()
+                                    // 当用户输入时，仅在文本模式下显示/隐藏历史记录
+                                    showSearchHistoryDropdown.value =
+                                        it.isEmpty() && searchHistory.isNotEmpty() && searchMode == SearchMode.TEXT
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -195,8 +214,9 @@ fun HomeScreen(
                                     .focusRequester(focusRequester)
                                     .onFocusChanged { focusState ->
                                         if (focusState.isFocused) {
-                                            // 仅当搜索框为空时才显示
-                                            showSearchHistoryDropdown.value = searchText.isEmpty() && searchHistory.isNotEmpty()
+                                            // 仅当搜索框为空且为文本模式时才显示
+                                            showSearchHistoryDropdown.value =
+                                                searchText.isEmpty() && searchHistory.isNotEmpty() && searchMode == SearchMode.TEXT
                                         } else {
                                             // --- 修改：移除此处的 hide 逻辑 ---
                                             // showSearchHistoryDropdown.value = false
@@ -209,42 +229,115 @@ fun HomeScreen(
                                 ),
                                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                                 singleLine = true,
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                // --- 修改：动态键盘类型 ---
+                                keyboardOptions = KeyboardOptions(
+                                    imeAction = ImeAction.Search,
+                                    keyboardType = if (searchMode == SearchMode.TEXT) KeyboardType.Text else KeyboardType.Number
+                                ),
+                                // --- 修改：根据搜索模式执行不同操作 ---
                                 keyboardActions = KeyboardActions(onSearch = {
                                     if (searchText.isNotBlank()) {
-                                        viewModel.addSearchHistory(searchText)
-                                        onSearch(searchText)
-                                        setSearchText("")
-                                        focusManager.clearFocus()
-                                        showSearchHistoryDropdown.value = false // 搜索后隐藏
+                                        if (searchMode == SearchMode.TEXT) {
+                                            // 文本搜索（原有逻辑）
+                                            viewModel.addSearchHistory(searchText)
+                                            onSearch(searchText)
+                                            setSearchText("")
+                                            focusManager.clearFocus()
+                                            showSearchHistoryDropdown.value = false // 搜索后隐藏
+                                        } else {
+                                            // ID 搜索
+                                            // --- 修改：调用 ViewModel 的新函数 ---
+                                            viewModel.findAndNavigateToComicId(searchText)
+                                            // ---
+
+                                            // 暂不将ID搜索计入历史记录
+                                            setSearchText("")
+                                            focusManager.clearFocus()
+                                            showSearchHistoryDropdown.value = false
+                                        }
                                     }
                                 }),
+                                // --- 修改：decorationBox 以包含模式切换按钮 ---
                                 decorationBox = { innerTextField ->
-                                    Box(
+                                    Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .background(
                                                 MaterialTheme.colorScheme.surfaceVariant,
                                                 RoundedCornerShape(20.dp)
                                             )
-                                            .padding(horizontal = 16.dp),
-                                        contentAlignment = Alignment.CenterStart
+                                            .padding(horizontal = 12.dp), // 调整内边距
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        innerTextField()
-                                        if (searchText.isEmpty()) {
-                                            Text(
-                                                text = "搜索...",
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                style = MaterialTheme.typography.bodyLarge
-                                            )
+                                        // --- 新增：搜索模式切换 ---
+                                        Box {
+                                            IconButton(
+                                                onClick = { showSearchModeMenu = true },
+                                                modifier = Modifier.size(24.dp) // 较小的点击区域
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (searchMode == SearchMode.TEXT) Icons.Default.Search else Icons.Default.Tag,
+                                                    contentDescription = "切换搜索模式",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(20.dp) // 较小的图标
+                                                )
+                                            }
+                                            // 模式选择下拉菜单
+                                            DropdownMenu(
+                                                expanded = showSearchModeMenu,
+                                                onDismissRequest = { showSearchModeMenu = false }
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text("搜标题") },
+                                                    onClick = {
+                                                        searchMode = SearchMode.TEXT
+                                                        showSearchModeMenu = false
+                                                    },
+                                                    leadingIcon = {
+                                                        Icon(Icons.Default.Search,
+                                                            contentDescription = "搜标题")
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("搜ID") },
+                                                    onClick = {
+                                                        searchMode = SearchMode.ID
+                                                        showSearchModeMenu = false
+                                                    },
+                                                    leadingIcon = {
+                                                        Icon(Icons.Default.Tag,
+                                                            contentDescription = "搜ID")
+                                                    }
+                                                )
+                                            }
+                                        }
+                                        // --- 搜索模式切换结束 ---
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        // 内部文本字段和占位符
+                                        Box(
+                                            modifier = Modifier.weight(1f),
+                                            contentAlignment = Alignment.CenterStart
+                                        ) {
+                                            innerTextField()
+                                            if (searchText.isEmpty()) {
+                                                Text(
+                                                    // 动态占位符
+                                                    text = if (searchMode == SearchMode.TEXT) "搜索..." else "输入漫画ID...",
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    style = MaterialTheme.typography.bodyLarge
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             )
 
                             // --- 替换：使用自定义的 Popup 替换 DropdownMenu ---
+                            // (搜索历史)
                             SearchHistoryPopup(
-                                expanded = showSearchHistoryDropdown.value,
+                                expanded = showSearchHistoryDropdown.value, // 依赖于 state
                                 history = searchHistory,
                                 width = searchBarWidth, // 传入测量好的宽度
                                 onSelectItem = { historyItem ->
@@ -365,7 +458,8 @@ fun HomeScreen(
                             )
 
                             item {
-                                val distinctLatestComics = uiState.loadedPages.flatMap { it.comics }.distinctBy { it.id }
+                                val distinctLatestComics =
+                                    uiState.loadedPages.flatMap { it.comics }.distinctBy { it.id }
                                 if (uiState.isLoadingMore) {
                                     CenteredIndicatorWithText(
                                         text = "正在加载更多，请稍候...",
@@ -422,9 +516,15 @@ private fun SearchHistoryPopup(
         if (expanded) isVisible = true else isVisible = false
     }
 
+    // --- 修复：获取 density 并计算 offset ---
+    val density = LocalDensity.current
+    val topOffsetPx = with(density) { 48.dp.roundToPx() } // 40dp (搜索框) + 8dp (间距)
+
     if (width > 0.dp) { // 仅在宽度测量完毕后显示
         Popup(
             alignment = Alignment.TopStart,
+            // --- 修复：使用 offset 移动整个 Popup 容器 ---
+            offset = androidx.compose.ui.unit.IntOffset(0, topOffsetPx),
             properties = PopupProperties(
                 focusable = false, // 不获取焦点，允许点击搜索框
                 dismissOnClickOutside = false // 我们自己处理点击外部
@@ -439,8 +539,7 @@ private fun SearchHistoryPopup(
                 // 外观
                 Surface(
                     modifier = Modifier
-                        .width(width) // 使用与搜索框相同的宽度
-                        .padding(top = 48.dp), // 40dp (搜索框高度) + 8dp (间距)
+                        .width(width), // --- 修复：移除 .padding(top = 48.dp) ---
                     color = MaterialTheme.colorScheme.surfaceVariant, // 匹配搜索框颜色
                     shape = RoundedCornerShape(16.dp), // 圆角
                     shadowElevation = 8.dp
