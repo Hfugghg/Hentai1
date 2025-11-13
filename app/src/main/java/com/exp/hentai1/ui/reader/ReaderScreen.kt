@@ -1,18 +1,13 @@
 package com.exp.hentai1.ui.reader
 
 import android.app.Application
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.gestures.rememberScrollableState
-import androidx.compose.foundation.gestures.scrollable
+import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,7 +24,7 @@ import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
 
-// 保持 ReaderViewModelFactory 和 ReaderScreen 不变
+// 保持 ReaderViewModelFactory 不变
 
 class ReaderViewModelFactory(private val application: Application, private val comicId: String) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -47,41 +42,113 @@ fun ReaderScreen(comicId: String) {
         factory = ReaderViewModelFactory(LocalContext.current.applicationContext as Application, comicId)
     )
     val uiState by viewModel.uiState.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
-    when {
-        uiState.isLoading -> {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                CircularProgressIndicator()
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(text = "正在加载图片...")
+    // --- 新增状态用于管理保存确认对话框 ---
+    var imageToSave by remember { mutableStateOf<String?>(null) }
+    // ----------------------------------------
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        when {
+            uiState.isLoading -> {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = "正在加载图片...")
+                }
             }
-        }
-        uiState.error != null -> {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "发生错误: ${uiState.error}",
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(16.dp)
+            uiState.error != null -> {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "发生错误: ${uiState.error}",
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            }
+            uiState.imageUrls != null -> {
+                ZoomableReader(
+                    imageUrls = uiState.imageUrls!!,
+                    onImageLongPress = { imageUrl ->
+                        // 长按时，设置待保存图片URL，触发对话框显示
+                        imageToSave = imageUrl
+                    }
                 )
             }
         }
-        uiState.imageUrls != null -> {
-            ZoomableReader(imageUrls = uiState.imageUrls!!)
+
+        // SnackbarHost 保持不变
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp)
+        )
+
+        // --- 新增图片保存确认对话框 ---
+        imageToSave?.let { imageUrl ->
+            AlertDialog(
+                onDismissRequest = {
+                    // 点击外部或返回键时关闭对话框
+                    imageToSave = null
+                },
+                title = { Text(text = "保存图片") },
+                text = { Text("确定要将此页漫画保存到手机图库吗？") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            imageToSave = null // 关闭对话框
+                            // 调用 ViewModel 的保存逻辑，并在完成后显示 Snackbar
+                            viewModel.saveImageToGallery(imageUrl) { message ->
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        message = message,
+                                        withDismissAction = true
+                                    )
+                                }
+                            }
+                        }
+                    ) {
+                        Text("确定")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            imageToSave = null // 关闭对话框
+                        }
+                    ) {
+                        Text("取消")
+                    }
+                }
+            )
         }
+
+        // SnackbarHost 放置在 Box 的底部
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp)
+        )
     }
 }
 
 @Composable
-fun ZoomableReader(imageUrls: List<String>) {
-    var scale by remember { mutableFloatStateOf(1f) } // 优化为 mutableFloatStateOf
+fun ZoomableReader(
+    imageUrls: List<String>,
+    onImageLongPress: (String) -> Unit // 新增长按回调参数
+) {
+    var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     val lazyListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -109,33 +176,24 @@ fun ZoomableReader(imageUrls: List<String>) {
                     val newScale = (scale * zoom).coerceIn(1f, 5f)
 
                     if (newScale > 1f) {
-                        // --- 核心修改 ---
                         // 1. 垂直平移 (Pan-Y): 转换为 LazyColumn 的滚动
-                        //    我们不更新 offset.y，而是滚动列表
                         coroutineScope.launch {
                             lazyListState.dispatchRawDelta(-pan.y)
                         }
 
                         // 2. 缩放 (Zoom) 和 水平平移 (Pan-X): 更新 offset
-                        //    我们计算新的 offset，使其围绕手势中心点 (centroid) 缩放
-
-                        // 计算缩放导致的偏移变化
-                        // (offset + centroid) = 将原点移动到手势中心
-                        // (... * newScale / oldScale) = 在新原点上进行缩放
-                        // (... - centroid) = 将原点移回
-                        // (...+ pan.x) = 应用水平平移
-                        // (我们忽略 pan.y, 因为它被用于滚动)
-
                         val newOffsetX = (offset.x + centroid.x - centroid.x * newScale / oldScale) + pan.x
+                        // 垂直偏移量 (Pan-Y) 不用于 offset.y 的更新，因为它被用于滚动
                         val newOffsetY = (offset.y + centroid.y - centroid.y * newScale / oldScale)
 
                         // 限制水平偏移量，防止移出屏幕
                         val maxOffsetX = (size.width * (newScale - 1)) / 2
-                        // 垂直偏移量也需要限制，但它现在只用于“锚定”缩放中心，而不是平移
+                        // 限制垂直偏移量 (用于缩放居中锚定，但不是列表平移)
                         val maxOffsetY = (size.height * (newScale - 1)) / 2
 
                         offset = Offset(
                             x = newOffsetX.coerceIn(-maxOffsetX, maxOffsetX),
+                            // 由于垂直滚动由 LazyColumn 负责，我们让 offset.y 保持相对居中
                             y = newOffsetY.coerceIn(-maxOffsetY, maxOffsetY)
                         )
 
@@ -168,35 +226,50 @@ fun ZoomableReader(imageUrls: List<String>) {
         ) {
             ReaderContent(
                 imageUrls = imageUrls,
-                lazyListState = lazyListState
-                // scaleState 参数已移除，因为它未被使用
+                lazyListState = lazyListState,
+                onImageLongPress = onImageLongPress // 传递长按回调
             )
         }
     }
 }
 
 @Composable
-fun ReaderContent(imageUrls: List<String>, lazyListState: LazyListState) { // 移除 scaleState 参数
+fun ReaderContent(
+    imageUrls: List<String>,
+    lazyListState: LazyListState,
+    onImageLongPress: (String) -> Unit // 新增长按回调参数
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         state = lazyListState,
         userScrollEnabled = false // 禁用LazyColumn自带的滚动，使用外部的scrollable
     ) {
         items(items = imageUrls, key = { it }) { imageUrl ->
-            ImageItem(imageUrl = imageUrl)
+            ImageItem(
+                imageUrl = imageUrl,
+                onLongPress = { onImageLongPress(imageUrl) } // 绑定长按事件和回调
+            )
         }
     }
 }
 
 @Composable
-fun ImageItem(imageUrl: String) {
+fun ImageItem(imageUrl: String, onLongPress: () -> Unit) { // 新增长按回调参数
     SubcomposeAsyncImage(
         model = ImageRequest.Builder(LocalContext.current)
             .data(imageUrl)
             .crossfade(true)
             .build(),
         contentDescription = null,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(imageUrl) { // 使用 imageUrl 作为 key 以便在 URL 改变时重新绑定手势
+                detectTapGestures(
+                    onLongPress = {
+                        onLongPress()
+                    }
+                )
+            },
         contentScale = ContentScale.FillWidth,
         loading = {
             Box(
