@@ -92,4 +92,8 @@ dependencies {
     // 如果你想要更多图标支持，可以添加 Material Icons Extended
     implementation(libs.androidx.compose.material.icons.extended)
 
+    implementation("androidx.compose.animation:animation:1.9.4")
+
+    implementation("androidx.compose.foundation:foundation:1.9.4")
+
 }

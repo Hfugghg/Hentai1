@@ -56,6 +56,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     onComicClick: (String) -> Unit,
     onFavoritesClick: () -> Unit,
+    onTagCollectionClick: () -> Unit, // 新增：标签收藏点击事件
     onRankingMoreClick: () -> Unit,
     onSearch: (String) -> Unit,
     onMenuClick: (String) -> Unit,
@@ -395,7 +396,8 @@ fun HomeScreen(
             ) {
                 SiteSwitchBar(
                     currentSite = currentSite,
-                    onSiteSelected = { viewModel.switchSite(it) }
+                    onSiteSelected = { viewModel.switchSite(it) },
+                    onTagCollectionClick = onTagCollectionClick // 修改：传递点击事件
                 )
 
                 when {
@@ -586,7 +588,7 @@ private fun SearchHistoryPopup(
                                         contentDescription = "删除 ${item.query}", // --- 修改：使用 item.query ---
                                         modifier = Modifier.size(18.dp) // 较小的图标
                                     )
-                                }
+                                 }
                             }
                         }
 

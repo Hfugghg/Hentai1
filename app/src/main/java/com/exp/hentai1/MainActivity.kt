@@ -35,6 +35,7 @@ import com.exp.hentai1.ui.ranking.RankingMoreScreen
 import com.exp.hentai1.ui.reader.ReaderScreen
 import com.exp.hentai1.ui.search.SearchResultScreen
 import com.exp.hentai1.ui.settings.SettingsScreen
+import com.exp.hentai1.ui.tagcollection.TagCollectionScreen
 import com.exp.hentai1.ui.theme.Hentai1Theme
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
@@ -85,6 +86,7 @@ fun Hentai1App(viewModel: HomeViewModel) {
                         navController.navigate("detail/$comicId")
                     },
                     onFavoritesClick = { navController.navigate("favorites") },
+                    onTagCollectionClick = { navController.navigate("tagCollection") },
                     onRankingMoreClick = { navController.navigate("rankingMore") },
                     onSearch = { query -> navController.navigate("search/$query") },
                     onMenuClick = { route -> navController.navigate(route) }
@@ -170,6 +172,13 @@ fun Hentai1App(viewModel: HomeViewModel) {
             }
             composable("about") {
                 AboutScreen()
+            }
+            composable("tagCollection") {
+                TagCollectionScreen(
+                    onNavigateToTagSearch = { query ->
+                        navController.navigate("search/$query")
+                    }
+                )
             }
         }
     }

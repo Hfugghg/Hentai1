@@ -42,6 +42,7 @@ object HomeComponents {
     fun SiteSwitchBar(
         currentSite: HentaiOneSite,
         onSiteSelected: (HentaiOneSite) -> Unit,
+        onTagCollectionClick: () -> Unit,
         modifier: Modifier = Modifier
     ) {
         // 将站点与其显示名称关联起来，便于维护
@@ -77,6 +78,15 @@ object HomeComponents {
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                     )
                 }
+            }
+            // 添加标签收藏按钮
+            TextButton(
+                onClick = onTagCollectionClick,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            ) {
+                Text(text = "标签收藏")
             }
         }
     }
