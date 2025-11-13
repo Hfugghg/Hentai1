@@ -16,95 +16,84 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import androidx.core.content.edit
 
-// <--- 修复: 新增 LoadedPage 数据类
 data class LoadedPage(
     val page: Int,
     val comics: List<Comic>
 )
 
+enum class SearchMode {
+    TEXT,
+    ID
+}
+
+data class SearchHistoryItem(val query: String, val type: SearchMode)
+
 data class HomeUiState(
     val isLoading: Boolean = true,
     val rankingComics: List<Comic> = emptyList(),
-    // 替换为结构化的 loadedPages
     val loadedPages: List<LoadedPage> = emptyList(),
     val error: String? = null,
-    val currentPage: Int = 1, // 当前加载的最新漫画页码 (用于追踪下次加载哪一页)
-    val isLoadingMore: Boolean = false, // 是否正在加载更多最新漫画
-    val canLoadMore: Boolean = true, // 是否还有更多最新漫画可以加载
-    val mainListScrollIndex: Int = 0, // 主列表滚动位置：第一个可见项的索引
-    val mainListScrollOffset: Int = 0, // 主列表滚动位置：第一个可见项的偏移量
-    val rankingListScrollIndex: Int = 0, // 排行榜列表滚动位置：第一个可见项的索引
-    val rankingListScrollOffset: Int = 0 // 排行榜列表滚动位置：第一个可见项的偏移量
+    val currentPage: Int = 1,
+    val isLoadingMore: Boolean = false,
+    val canLoadMore: Boolean = true,
+    val mainListScrollIndex: Int = 0,
+    val mainListScrollOffset: Int = 0,
+    val rankingListScrollIndex: Int = 0,
+    val rankingListScrollOffset: Int = 0
 )
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
-    // 为每个站点维护一个独立的UI状态
     private val _siteStates: MutableMap<HentaiOneSite, MutableStateFlow<HomeUiState>> =
         HentaiOneSite.entries.associateWith { MutableStateFlow(HomeUiState()) }.toMutableMap()
 
-    // 使用 SharedFlow 来处理一次性导航事件
     private val _navigateToDetail = MutableSharedFlow<String>()
     val navigateToDetail: SharedFlow<String> = _navigateToDetail.asSharedFlow()
 
-    // 当前选中的站点
     private val _currentSite = MutableStateFlow(HentaiOneSite.MAIN)
     val currentSite: StateFlow<HentaiOneSite> = _currentSite
 
-    // 暴露给UI的StateFlow，它会根据当前站点动态更新
     val uiState: StateFlow<HomeUiState> = _currentSite.flatMapLatest { site ->
         _siteStates.getValue(site)
     }.stateIn(
         viewModelScope,
         SharingStarted.Eagerly,
-        _siteStates.getValue(HentaiOneSite.MAIN).value // 初始值
+        _siteStates.getValue(HentaiOneSite.MAIN).value
     )
 
-    // --- 搜索记录相关 ---
     private val SEARCH_HISTORY_KEY = "search_history"
     private val MAX_SEARCH_HISTORY_SIZE = 30
     private val sharedPreferences: SharedPreferences =
         application.getSharedPreferences("hentai1_prefs", Context.MODE_PRIVATE)
     private val gson = Gson()
 
-    private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
-    val searchHistory: StateFlow<List<String>> = _searchHistory
-    // --- 搜索记录相关 ---
+    private val _searchHistory = MutableStateFlow<List<SearchHistoryItem>>(emptyList())
+    val searchHistory: StateFlow<List<SearchHistoryItem>> = _searchHistory
 
     init {
-        // 设置初始站点给NetworkUtils
         NetworkUtils.setSite(HentaiOneSite.MAIN)
-        // 为初始站点加载数据
         fetchAllComics(HentaiOneSite.MAIN)
-        // 加载搜索历史
         loadSearchHistory()
     }
 
-    // --- 新增: 处理ID搜索的函数 ---
     fun findAndNavigateToComicId(comicId: String) {
-        // 记住用户当前所在的站点
         val originalSite = _currentSite.value
 
-        // 在当前站点UI上显示加载状态
         _siteStates.getValue(originalSite).update { it.copy(isLoading = true, error = null) }
 
         viewModelScope.launch {
-            // 1. 调用 NetworkUtils 查找漫画在哪
             val foundSite = NetworkUtils.findComicSite(getApplication(), comicId)
 
             if (foundSite != null) {
-                // 2. 找到了！临时设置全局站点
-                // DetailViewModel 将会使用这个站点来加载
                 NetworkUtils.setSite(foundSite)
 
-                // 3. 触发导航事件
+                addSearchHistory(comicId, SearchMode.ID)
+
                 _navigateToDetail.emit(comicId)
 
-                // 4. 导航后，取消当前站点的加载状态
                 _siteStates.getValue(originalSite).update { it.copy(isLoading = false) }
             } else {
-                // 5. 未找到，在当前站点显示错误信息
                 _siteStates.getValue(originalSite).update {
                     it.copy(isLoading = false, error = "未在任何站点找到漫画ID: $comicId")
                 }
@@ -112,16 +101,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // 切换站点的方法
     fun switchSite(newSite: HentaiOneSite) {
         if (_currentSite.value == newSite) return
 
         _currentSite.value = newSite
-        NetworkUtils.setSite(newSite) // 更新NetworkUtils的站点
+        NetworkUtils.setSite(newSite)
 
-        // 如果新站点的数据尚未加载，则触发加载
         val currentSiteState = _siteStates.getValue(newSite).value
-        // 检查 loadedPages 是否为空
         if (currentSiteState.isLoading && currentSiteState.loadedPages.isEmpty() && currentSiteState.rankingComics.isEmpty()) {
             fetchAllComics(newSite)
         }
@@ -129,20 +115,16 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun fetchAllComics(site: HentaiOneSite) {
         viewModelScope.launch {
-            // 清空 loadedPages
             _siteStates.getValue(site).update { it.copy(isLoading = true, error = null, loadedPages = emptyList()) }
             try {
-                // 确保NetworkUtils已设置为正确的站点
                 NetworkUtils.setSite(site)
 
-                // 使用 async 并发获取数据
                 val rankingDeferred = async { fetchRankingComics() }
-                val latestDeferred = async { fetchLatestComics(1) } // 初始加载第一页
+                val latestDeferred = async { fetchLatestComics(1) }
 
                 val rankingResult = rankingDeferred.await()
                 val latestResult = latestDeferred.await()
 
-                // 检查是否有任何一个请求失败
                 val firstError =
                     rankingResult.exceptionOrNull()?.message ?: latestResult.exceptionOrNull()?.message
 
@@ -151,7 +133,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     val latestComicsList = latestResult.getOrNull() ?: emptyList()
 
-                    // 将第一页数据结构化
                     val newLoadedPages = if (latestComicsList.isNotEmpty()) {
                         listOf(LoadedPage(page = 1, comics = latestComicsList))
                     } else {
@@ -162,7 +143,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                         it.copy(
                             isLoading = false,
                             rankingComics = rankingResult.getOrNull() ?: emptyList(),
-                            loadedPages = newLoadedPages, // <--- 使用 newLoadedPages
+                            loadedPages = newLoadedPages,
                             currentPage = 1,
                             canLoadMore = latestComicsList.isNotEmpty()
                         )
@@ -177,7 +158,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun fetchRankingComics(): Result<List<Comic>> = runCatching {
-        // 调用每日排行URL和解析器
         val html = NetworkUtils.fetchHtml(getApplication(), NetworkUtils.latestUrl())
         if (html != null && !html.startsWith("Error")) {
             ComicDataParser.parseRankingComics(html)
@@ -187,7 +167,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun fetchLatestComics(page: Int): Result<List<Comic>> = runCatching {
-        val url = NetworkUtils.latestUrl(page) // 使用 NetworkUtils.latestUrl(page) 来获取 URL
+        val url = NetworkUtils.latestUrl(page)
         val html = NetworkUtils.fetchHtml(getApplication(), url)
         if (html != null && !html.startsWith("Error")) {
             ComicDataParser.parseLatestComics(html)
@@ -208,20 +188,18 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             try {
-                // 确保NetworkUtils已设置为正确的站点
                 NetworkUtils.setSite(currentSiteValue)
 
                 val nextPage = currentUiState.currentPage + 1
                 val newComics = fetchLatestComics(nextPage).getOrNull() ?: emptyList()
 
-                // 将新数据添加到 loadedPages 列表
                 val newLoadedPage = if (newComics.isNotEmpty()) {
                     LoadedPage(page = nextPage, comics = newComics)
                 } else null
 
                 _siteStates.getValue(currentSiteValue).update { currentState ->
                     currentState.copy(
-                        loadedPages = currentState.loadedPages + listOfNotNull(newLoadedPage), // <--- 追加新的 LoadedPage
+                        loadedPages = currentState.loadedPages + listOfNotNull(newLoadedPage),
                         currentPage = if (newComics.isNotEmpty()) nextPage else currentState.currentPage,
                         isLoadingMore = false,
                         canLoadMore = newComics.isNotEmpty()
@@ -237,13 +215,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadLatestComicsByPage(page: Int) {
         val currentSiteValue = _currentSite.value
-        // 只清空 loadedPages，保持 rankingComics 不变
         _siteStates.getValue(currentSiteValue).update {
             it.copy(
                 isLoading = true,
                 error = null,
-                loadedPages = emptyList(), // 清空已加载的页面数据
-                currentPage = page // <--- 新增: 在开始加载前就更新 currentPage，确保加载指示器显示正确页码
+                loadedPages = emptyList(),
+                currentPage = page
             )
         }
 
@@ -255,15 +232,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
                 if (newComics != null) {
                     val newLoadedPages = if (newComics.isNotEmpty()) {
-                        listOf(LoadedPage(page = page, comics = newComics)) // <--- 创建新 LoadedPage 列表
+                        listOf(LoadedPage(page = page, comics = newComics))
                     } else emptyList()
 
                     _siteStates.getValue(currentSiteValue).update {
                         it.copy(
                             isLoading = false,
-                            loadedPages = newLoadedPages, // <--- 替换为新列表
-                            currentPage = page, // <--- 确认加载的页码
-                            // 修正: 即使只加载了一页，如果该页有内容，理论上还可以加载下一页
+                            loadedPages = newLoadedPages,
+                            currentPage = page,
                             canLoadMore = newComics.isNotEmpty()
                         )
                     }
@@ -272,7 +248,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                         it.copy(
                             isLoading = false,
                             error = result.exceptionOrNull()?.message ?: "加载指定页码失败",
-                            canLoadMore = false // 加载失败，停止加载更多
+                            canLoadMore = false
                         )
                     }
                 }
@@ -298,30 +274,35 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // --- 搜索记录功能实现 ---
     private fun loadSearchHistory() {
         val json = sharedPreferences.getString(SEARCH_HISTORY_KEY, null)
         if (json != null) {
-            val type = object : TypeToken<List<String>>() {}.type
-            _searchHistory.value = gson.fromJson(json, type)
+            try {
+                val type = object : TypeToken<List<SearchHistoryItem>>() {}.type
+                _searchHistory.value = gson.fromJson(json, type) ?: emptyList()
+            } catch (_: Exception) {
+                _searchHistory.value = emptyList()
+                saveSearchHistory(emptyList())
+            }
         }
     }
 
-    private fun saveSearchHistory(history: List<String>) {
+    private fun saveSearchHistory(history: List<SearchHistoryItem>) {
         val json = gson.toJson(history)
         sharedPreferences.edit { putString(SEARCH_HISTORY_KEY, json) }
     }
 
-    fun addSearchHistory(query: String) {
+    fun addSearchHistory(query: String, type: SearchMode) {
         val trimmedQuery = query.trim()
         if (trimmedQuery.isBlank()) return
+        val newItem = SearchHistoryItem(trimmedQuery, type)
 
         val currentHistory = _searchHistory.value.toMutableList()
-        currentHistory.remove(trimmedQuery) // 移除旧的，确保新搜索的在最前面
-        currentHistory.add(0, trimmedQuery) // 添加到最前面
+        currentHistory.remove(newItem)
+        currentHistory.add(0, newItem)
 
         if (currentHistory.size > MAX_SEARCH_HISTORY_SIZE) {
-            currentHistory.removeAt(currentHistory.size - 1) // 移除末尾的旧记录
+            currentHistory.removeAt(currentHistory.size - 1)
         }
         _searchHistory.value = currentHistory
         saveSearchHistory(currentHistory)
@@ -332,12 +313,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         saveSearchHistory(emptyList())
     }
 
-    fun removeSearchHistoryItem(item: String) {
+    fun removeSearchHistoryItem(item: SearchHistoryItem) {
         val currentHistory = _searchHistory.value.toMutableList()
         if (currentHistory.remove(item)) {
             _searchHistory.value = currentHistory
             saveSearchHistory(currentHistory)
         }
     }
-    // --- 搜索记录功能实现 ---
 }

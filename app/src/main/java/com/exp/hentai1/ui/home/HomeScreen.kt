@@ -1,5 +1,6 @@
 package com.exp.hentai1.ui.home
 
+// --- 修改：从 ViewModel 导入 ---
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,11 +46,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 
-// --- 新增：搜索模式 ---
-private enum class SearchMode {
-    TEXT,
-    ID
-}
+// --- 删除：搜索模式 ---
+// (已移动到 ViewModel)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -204,9 +202,8 @@ fun HomeScreen(
                                 value = searchText,
                                 onValueChange = {
                                     setSearchText(it)
-                                    // 当用户输入时，仅在文本模式下显示/隐藏历史记录
-                                    showSearchHistoryDropdown.value =
-                                        it.isEmpty() && searchHistory.isNotEmpty() && searchMode == SearchMode.TEXT
+                                    // --- 修改：无论何种模式，只要为空且有历史就显示 ---
+                                    showSearchHistoryDropdown.value = it.isEmpty() && searchHistory.isNotEmpty()
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -214,9 +211,8 @@ fun HomeScreen(
                                     .focusRequester(focusRequester)
                                     .onFocusChanged { focusState ->
                                         if (focusState.isFocused) {
-                                            // 仅当搜索框为空且为文本模式时才显示
-                                            showSearchHistoryDropdown.value =
-                                                searchText.isEmpty() && searchHistory.isNotEmpty() && searchMode == SearchMode.TEXT
+                                            // --- 修改：无论何种模式，只要为空且有历史就显示 ---
+                                            showSearchHistoryDropdown.value = searchText.isEmpty() && searchHistory.isNotEmpty()
                                         } else {
                                             // --- 修改：移除此处的 hide 逻辑 ---
                                             // showSearchHistoryDropdown.value = false
@@ -239,7 +235,7 @@ fun HomeScreen(
                                     if (searchText.isNotBlank()) {
                                         if (searchMode == SearchMode.TEXT) {
                                             // 文本搜索（原有逻辑）
-                                            viewModel.addSearchHistory(searchText)
+                                            viewModel.addSearchHistory(searchText, SearchMode.TEXT) // --- 修改：传入类型 ---
                                             onSearch(searchText)
                                             setSearchText("")
                                             focusManager.clearFocus()
@@ -250,7 +246,7 @@ fun HomeScreen(
                                             viewModel.findAndNavigateToComicId(searchText)
                                             // ---
 
-                                            // 暂不将ID搜索计入历史记录
+                                            // --- 修改：VM 成功后会添加历史记录，这里只清空 ---
                                             setSearchText("")
                                             focusManager.clearFocus()
                                             showSearchHistoryDropdown.value = false
@@ -341,9 +337,16 @@ fun HomeScreen(
                                 history = searchHistory,
                                 width = searchBarWidth, // 传入测量好的宽度
                                 onSelectItem = { historyItem ->
-                                    setSearchText(historyItem)
-                                    viewModel.addSearchHistory(historyItem)
-                                    onSearch(historyItem)
+                                    setSearchText(historyItem.query)
+                                    // 重新添加，使其排到最前
+                                    viewModel.addSearchHistory(historyItem.query, historyItem.type)
+
+                                    // --- 关键修改：根据类型执行不同操作 ---
+                                    if (historyItem.type == SearchMode.TEXT) {
+                                        onSearch(historyItem.query)
+                                    } else {
+                                        viewModel.findAndNavigateToComicId(historyItem.query)
+                                    }
                                     focusManager.clearFocus()
                                     showSearchHistoryDropdown.value = false
                                 },
@@ -504,10 +507,10 @@ fun HomeScreen(
 @Composable
 private fun SearchHistoryPopup(
     expanded: Boolean,
-    history: List<String>,
+    history: List<SearchHistoryItem>, // --- 修改：类型 ---
     width: Dp,
-    onSelectItem: (String) -> Unit,
-    onClearItem: (String) -> Unit,
+    onSelectItem: (SearchHistoryItem) -> Unit, // --- 修改：类型 ---
+    onClearItem: (SearchHistoryItem) -> Unit, // --- 修改：类型 ---
     onClearAll: () -> Unit
 ) {
     // 使用 LaunchedEffect + state 来驱动 AnimatedVisibility，以确保退出动画正常播放
@@ -548,7 +551,7 @@ private fun SearchHistoryPopup(
                     LazyColumn(
                         modifier = Modifier.heightIn(max = 240.dp) // 最大高度限制
                     ) {
-                        items(history) { item ->
+                        items(history, key = { it.query + it.type.name }) { item -> // --- 修改：使用 item ---
                             // 单条记录
                             Row(
                                 modifier = Modifier
@@ -557,8 +560,18 @@ private fun SearchHistoryPopup(
                                     .padding(horizontal = 16.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                // --- 新增：显示类型的图标 ---
+                                Icon(
+                                    imageVector = if (item.type == SearchMode.TEXT) Icons.Default.Search else Icons.Default.Tag,
+                                    contentDescription = if (item.type == SearchMode.TEXT) "文本搜索" else "ID搜索",
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                // --- 新增结束 ---
+
                                 Text(
-                                    text = item,
+                                    text = item.query, // --- 修改：使用 item.query ---
                                     modifier = Modifier.weight(1f),
                                     maxLines = 1,
                                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
@@ -570,7 +583,7 @@ private fun SearchHistoryPopup(
                                 ) {
                                     Icon(
                                         Icons.Default.Close,
-                                        contentDescription = "删除 $item",
+                                        contentDescription = "删除 ${item.query}", // --- 修改：使用 item.query ---
                                         modifier = Modifier.size(18.dp) // 较小的图标
                                     )
                                 }
