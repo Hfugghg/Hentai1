@@ -24,8 +24,7 @@ import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
 
-// 保持 ReaderViewModelFactory 不变
-
+// ReaderViewModelFactory 保持不变
 class ReaderViewModelFactory(private val application: Application, private val comicId: String) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(ReaderViewModel::class.java)) {
@@ -45,9 +44,7 @@ fun ReaderScreen(comicId: String) {
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
-    // --- 新增状态用于管理保存确认对话框 ---
     var imageToSave by remember { mutableStateOf<String?>(null) }
-    // ----------------------------------------
 
     Box(modifier = Modifier.fillMaxSize()) {
         when {
@@ -81,24 +78,29 @@ fun ReaderScreen(comicId: String) {
                     onImageLongPress = { imageUrl ->
                         // 长按时，设置待保存图片URL，触发对话框显示
                         imageToSave = imageUrl
+                    },
+                    // --- 新增: 实现中部点击事件 ---
+                    onTap = {
+                        // TODO: 在此处触发显示/隐藏阅读菜单的逻辑
+
+                        // (临时) 使用 Snackbar 演示点击已捕获
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar(
+                                message = "中部点击 (TODO: 显示菜单)",
+                                duration = SnackbarDuration.Short
+                            )
+                        }
                     }
                 )
             }
         }
 
-        // SnackbarHost 保持不变
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(16.dp)
-        )
+        // --- 优化: 移除了重复的 SnackbarHost ---
 
-        // --- 新增图片保存确认对话框 ---
+        // 图片保存确认对话框
         imageToSave?.let { imageUrl ->
             AlertDialog(
                 onDismissRequest = {
-                    // 点击外部或返回键时关闭对话框
                     imageToSave = null
                 },
                 title = { Text(text = "保存图片") },
@@ -107,7 +109,6 @@ fun ReaderScreen(comicId: String) {
                     TextButton(
                         onClick = {
                             imageToSave = null // 关闭对话框
-                            // 调用 ViewModel 的保存逻辑，并在完成后显示 Snackbar
                             viewModel.saveImageToGallery(imageUrl) { message ->
                                 coroutineScope.launch {
                                     snackbarHostState.showSnackbar(
@@ -146,22 +147,23 @@ fun ReaderScreen(comicId: String) {
 @Composable
 fun ZoomableReader(
     imageUrls: List<String>,
-    onImageLongPress: (String) -> Unit // 新增长按回调参数
+    onImageLongPress: (String) -> Unit,
+    onTap: () -> Unit // <-- 新增: 点击事件回调
 ) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     val lazyListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
+    // 这个 ScrollableState 用于处理未缩放 (scale == 1f) 时的标准垂直滚动/Fling
     val scrollableState = rememberScrollableState { delta ->
-        // 只有在未缩放时才允许滚动 (scale == 1f)
         if (scale == 1f) {
             coroutineScope.launch {
-                lazyListState.dispatchRawDelta(-delta)
+                lazyListState.dispatchRawDelta(-delta) // 将滚动增量传递给 LazyColumn
             }
             delta
         } else {
-            0f // 缩放状态下，滚动交给 detectTransformGestures 处理
+            0f // 缩放时，禁用此滚动，交由手势检测处理
         }
     }
 
@@ -169,41 +171,45 @@ fun ZoomableReader(
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
-                // 使用 detectTransformGestures 来同时处理缩放和平移
-                detectTransformGestures { centroid, pan, zoom, rotation -> // rotation 未使用，但保留作为手势检测的一部分
+                // detectTransformGestures 是现代 Compose 中处理缩放/平移的核心
+                // 它允许我们同时响应多点触控（缩放）和单指拖动（平移）
+                detectTransformGestures { centroid, pan, zoom, _ ->
 
                     val oldScale = scale
-                    val newScale = (scale * zoom).coerceIn(1f, 5f)
+                    val newScale = (scale * zoom).coerceIn(1f, 5f) // 限制缩放范围
 
                     if (newScale > 1f) {
-                        // 1. 垂直平移 (Pan-Y): 转换为 LazyColumn 的滚动
+                        // --- 现代阅读器手势处理模式 ---
+                        // 1. 垂直平移 (Pan-Y): 当放大时，垂直拖动不应移动画布 (offset.y)，
+                        //    而应直接滚动下方的 LazyColumn。
                         coroutineScope.launch {
                             lazyListState.dispatchRawDelta(-pan.y)
                         }
 
-                        // 2. 缩放 (Zoom) 和 水平平移 (Pan-X): 更新 offset
+                        // 2. 缩放 (Zoom) 和 水平平移 (Pan-X):
+                        //    - (offset.x + centroid.x - centroid.x * newScale / oldScale) 是基于缩放中心 (centroid) 计算新的 X 偏移量
+                        //    - + pan.x 是应用手指的水平拖动
                         val newOffsetX = (offset.x + centroid.x - centroid.x * newScale / oldScale) + pan.x
-                        // 垂直偏移量 (Pan-Y) 不用于 offset.y 的更新，因为它被用于滚动
+
+                        //    - Y 偏移量同理计算，但不应用 pan.y，因为 pan.y 用于滚动列表
                         val newOffsetY = (offset.y + centroid.y - centroid.y * newScale / oldScale)
 
-                        // 限制水平偏移量，防止移出屏幕
+                        // 限制偏移量，防止图片移出边界
                         val maxOffsetX = (size.width * (newScale - 1)) / 2
-                        // 限制垂直偏移量 (用于缩放居中锚定，但不是列表平移)
                         val maxOffsetY = (size.height * (newScale - 1)) / 2
 
                         offset = Offset(
                             x = newOffsetX.coerceIn(-maxOffsetX, maxOffsetX),
-                            // 由于垂直滚动由 LazyColumn 负责，我们让 offset.y 保持相对居中
                             y = newOffsetY.coerceIn(-maxOffsetY, maxOffsetY)
                         )
 
                     } else {
-                        // 缩放回 1f 时，重置所有状态
+                        // 当缩回原始大小时，重置所有状态
                         scale = 1f
                         offset = Offset.Zero
                     }
 
-                    // 在所有计算完成后再更新 scale
+                    // 在所有计算完成后更新 scale
                     scale = newScale
                 }
             }
@@ -211,23 +217,23 @@ fun ZoomableReader(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .scrollable(
+                .scrollable( // 附加一个外部 scrollable 以处理未缩放时的滚动
                     orientation = Orientation.Vertical,
                     state = scrollableState,
-                    enabled = scale == 1f // 只在未缩放时启用外部滚动
+                    enabled = scale == 1f // 仅在未缩放时启用
                 )
-                .graphicsLayer(
+                .graphicsLayer( // 使用 graphicsLayer 高效地应用缩放和平移
                     scaleX = scale,
                     scaleY = scale,
                     translationX = offset.x,
                     translationY = offset.y
-                    // 默认的 transformOrigin 是 Center，这对于基于 centroid 的计算是正确的
                 )
         ) {
             ReaderContent(
                 imageUrls = imageUrls,
                 lazyListState = lazyListState,
-                onImageLongPress = onImageLongPress // 传递长按回调
+                onImageLongPress = onImageLongPress,
+                onTap = onTap // <-- 传递点击事件
             )
         }
     }
@@ -237,24 +243,30 @@ fun ZoomableReader(
 fun ReaderContent(
     imageUrls: List<String>,
     lazyListState: LazyListState,
-    onImageLongPress: (String) -> Unit // 新增长按回调参数
+    onImageLongPress: (String) -> Unit,
+    onTap: () -> Unit // <-- 新增: 点击事件回调
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         state = lazyListState,
-        userScrollEnabled = false // 禁用LazyColumn自带的滚动，使用外部的scrollable
+        userScrollEnabled = false // 禁用 LazyColumn 的内置滚动，由外部的 ZoomableReader 完全接管
     ) {
         items(items = imageUrls, key = { it }) { imageUrl ->
             ImageItem(
                 imageUrl = imageUrl,
-                onLongPress = { onImageLongPress(imageUrl) } // 绑定长按事件和回调
+                onLongPress = { onImageLongPress(imageUrl) },
+                onTap = onTap // <-- 传递点击事件
             )
         }
     }
 }
 
 @Composable
-fun ImageItem(imageUrl: String, onLongPress: () -> Unit) { // 新增长按回调参数
+fun ImageItem(
+    imageUrl: String,
+    onLongPress: () -> Unit,
+    onTap: () -> Unit // <-- 新增: 点击事件回调
+) {
     SubcomposeAsyncImage(
         model = ImageRequest.Builder(LocalContext.current)
             .data(imageUrl)
@@ -263,10 +275,14 @@ fun ImageItem(imageUrl: String, onLongPress: () -> Unit) { // 新增长按回调
         contentDescription = null,
         modifier = Modifier
             .fillMaxWidth()
-            .pointerInput(imageUrl) { // 使用 imageUrl 作为 key 以便在 URL 改变时重新绑定手势
+            // 将所有手势检测统一放在 ImageItem 上
+            .pointerInput(imageUrl, onLongPress, onTap) { // 确保 lambda 作为 key
                 detectTapGestures(
                     onLongPress = {
                         onLongPress()
+                    },
+                    onTap = {
+                        onTap() // <-- 新增: 捕获点击事件
                     }
                 )
             },
@@ -275,7 +291,7 @@ fun ImageItem(imageUrl: String, onLongPress: () -> Unit) { // 新增长按回调
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(600.dp),
+                    .height(600.dp), // 保持占位符高度
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator()
@@ -285,7 +301,7 @@ fun ImageItem(imageUrl: String, onLongPress: () -> Unit) { // 新增长按回调
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(600.dp),
+                    .height(600.dp), // 保持占位符高度
                 contentAlignment = Alignment.Center
             ) {
                 Text("图片加载失败")

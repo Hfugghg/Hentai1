@@ -428,6 +428,8 @@ fun HomeScreen(
                     else -> {
                         val distinctRankingComics = uiState.rankingComics.distinctBy { it.id }
 
+                        val distinctLatestComics = uiState.loadedPages.flatMap { it.comics }.distinctBy { it.id }
+
                         LazyColumn(
                             modifier = modifier.fillMaxSize(),
                             state = currentMainListState
@@ -463,8 +465,7 @@ fun HomeScreen(
                             )
 
                             item {
-                                val distinctLatestComics =
-                                    uiState.loadedPages.flatMap { it.comics }.distinctBy { it.id }
+                                // --- 修改点 3：这里的 distinctLatestComics 现在引用的是上面定义的变量 ---
                                 if (uiState.isLoadingMore) {
                                     CenteredIndicatorWithText(
                                         text = "正在加载更多，请稍候...",
@@ -472,7 +473,7 @@ fun HomeScreen(
                                             .fillMaxWidth()
                                             .padding(vertical = 16.dp)
                                     )
-                                } else if (!uiState.canLoadMore && distinctLatestComics.isNotEmpty()) {
+                                } else if (!uiState.canLoadMore && distinctLatestComics.isNotEmpty()) { // <-- 使用已定义的变量
                                     Text(
                                         text = "没有更多了，主人~",
                                         style = MaterialTheme.typography.bodyMedium,

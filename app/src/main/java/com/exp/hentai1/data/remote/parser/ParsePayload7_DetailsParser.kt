@@ -84,9 +84,65 @@ internal fun parseComicDetails(detailsObject: JSONObject, comics: MutableList<Co
 
             // --- 【修改】添加多语言支持 (CN, EN)，扩展 when 语句 ---
             when (titleText) {
-                "作者", "Artists" -> { // "作者" (JP, CN) [cite: 1]
+                "作者", "Artists" -> { // "作者" (JP, CN)
                     // 对应 'artists' -> 'artistsId'
-                    artists.addAll(extractTagLikeItems(groupChildren, ::getSingleElement))
+                    // artists.addAll(extractTagLikeItems(groupChildren, ::getSingleElement)) // <-- 删除这一行
+
+                    // --- 【修改】粘贴 "Characters" 或 "Tags" 的逻辑并修改变量名 ---
+                    Log.d(TAG, "[7-Details] 正在解析 '作者' (Artists)...")
+                    val artistsArray: JSONArray
+                    val firstValue = groupChildren.optJSONArray(1)
+
+                    // 检查是 "嵌套" 结构还是 "扁平" 结构
+                    if (groupChildren.length() == 2 && firstValue != null) {
+                        Log.d(TAG, "[7-Details] 检测到 '作者' 为嵌套结构。")
+                        artistsArray = firstValue
+                    } else {
+                        Log.d(TAG, "[7-Details] 检测到 '作者' 为扁平结构。")
+                        artistsArray = JSONArray()
+                        // 从索引 1 开始循环，获取所有后续条目
+                        for (j in 1 until groupChildren.length()) {
+                            groupChildren.optJSONArray(j)?.let { artistsArray.put(it) }
+                        }
+                    }
+
+                    Log.i(TAG, "[7-Details] 找到 ${artistsArray.length()} 个潜在的作者条目。")
+
+                    // 遍历所有找到的作者
+                    for (j in 0 until artistsArray.length()) {
+                        val valueArray = artistsArray.optJSONArray(j) ?: continue
+                        try {
+                            val innerValueArray = getSingleElement(valueArray)
+                            val elementType = innerValueArray.optString(1)
+
+                            if (elementType == "\$L12") {
+                                val elementContainer = innerValueArray.optJSONObject(3) ?: continue
+
+                                // 解析 Artist ID
+                                val href = elementContainer.optString("href")
+                                val artistId = href.split("/").lastOrNull() ?: ""
+
+                                // 解析 Artist Name
+                                val childrenArray = elementContainer.optJSONArray("children") ?: continue
+                                val element = getSingleElement(childrenArray)
+                                val artistName = element.optJSONObject(3)
+                                    ?.optString("children", "")
+                                    ?.trim()
+                                    ?.replace("\\r", "") ?: ""
+
+                                if (artistId.isNotEmpty() && artistName.isNotEmpty() && artistName != "N/A") {
+                                    artists.add(Tag(id = artistId, name = artistName))
+                                    Log.d(TAG, "[7-Details]  - 添加作者: [ID: $artistId, Name: $artistName]")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "[7-Details] 解析单个 '作者' 失败 at index $j: ${e.message}")
+                            // 继续处理下一个作者，不要中断
+                            continue
+                        }
+                    }
+                    Log.i(TAG, "[7-Details] '作者' 解析完成，共 ${artists.size} 个。")
+                    // --- 【修改结束】---
                 }
 
                 "作品言語", "作品语言", "Languages" -> { // "作品言語" (JP), "作品语言" (CN) [cite: 5]
@@ -156,9 +212,66 @@ internal fun parseComicDetails(detailsObject: JSONObject, comics: MutableList<Co
                     groups.addAll(extractTagLikeItems(groupChildren, ::getSingleElement))
                 }
 
-                "原作", "Parodies" -> { // "原作" (JP, CN) [cite: 1]
+                "原作", "Parodies" -> { // "原作" (JP, CN)
                     // 对应 'parodies' -> 'parodiesId'
-                    parodies.addAll(extractTagLikeItems(groupChildren, ::getSingleElement))
+                    // parodies.addAll(extractTagLikeItems(groupChildren, ::getSingleElement)) // <-- 删除这一行
+
+                    // --- 【修改】粘贴 "Characters" 或 "Tags" 的逻辑并修改变量名 ---
+                    Log.d(TAG, "[7-Details] 正在解析 '原作' (Parodies)...")
+                    val parodiesArray: JSONArray
+                    val firstValue = groupChildren.optJSONArray(1)
+
+                    // 检查是 "嵌套" 结构还是 "扁平" 结构
+                    // (您提供的数据  显示为 "扁平" 结构，此逻辑将正确处理)
+                    if (groupChildren.length() == 2 && firstValue != null) {
+                        Log.d(TAG, "[7-Details] 检测到 '原作' 为嵌套结构。")
+                        parodiesArray = firstValue
+                    } else {
+                        Log.d(TAG, "[7-Details] 检测到 '原作' 为扁平结构。")
+                        parodiesArray = JSONArray()
+                        // 从索引 1 开始循环，获取所有后续条目
+                        for (j in 1 until groupChildren.length()) {
+                            groupChildren.optJSONArray(j)?.let { parodiesArray.put(it) }
+                        }
+                    }
+
+                    Log.i(TAG, "[7-Details] 找到 ${parodiesArray.length()} 个潜在的原作条目。")
+
+                    // 遍历所有找到的原作
+                    for (j in 0 until parodiesArray.length()) {
+                        val valueArray = parodiesArray.optJSONArray(j) ?: continue
+                        try {
+                            val innerValueArray = getSingleElement(valueArray)
+                            val elementType = innerValueArray.optString(1)
+
+                            if (elementType == "\$L12") {
+                                val elementContainer = innerValueArray.optJSONObject(3) ?: continue
+
+                                // 解析 Parody ID
+                                val href = elementContainer.optString("href")
+                                val parodyId = href.split("/").lastOrNull() ?: ""
+
+                                // 解析 Parody Name
+                                val childrenArray = elementContainer.optJSONArray("children") ?: continue
+                                val element = getSingleElement(childrenArray)
+                                val parodyName = element.optJSONObject(3)
+                                    ?.optString("children", "")
+                                    ?.trim()
+                                    ?.replace("\\r", "") ?: ""
+
+                                if (parodyId.isNotEmpty() && parodyName.isNotEmpty() && parodyName != "N/A") {
+                                    parodies.add(Tag(id = parodyId, name = parodyName))
+                                    Log.d(TAG, "[7-Details]  - 添加原作: [ID: $parodyId, Name: $parodyName]")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "[7-Details] 解析单个 '原作' 失败 at index $j: ${e.message}")
+                            // 继续处理下一个原作，不要中断
+                            continue
+                        }
+                    }
+                    Log.i(TAG, "[7-Details] '原作' 解析完成，共 ${parodies.size} 个。")
+                    // --- 【修改结束】---
                 }
 
                 "カテゴリー", "类别", "Categories" -> { // "カテゴリー" (JP), "类别" (CN) [cite: 6]

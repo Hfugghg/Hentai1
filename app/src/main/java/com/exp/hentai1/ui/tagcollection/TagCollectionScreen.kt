@@ -67,7 +67,10 @@ fun TagCollectionScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("我的标签收藏") })
+            TopAppBar(
+                windowInsets = WindowInsets(0, 0, 0, 0),
+                title = { Text("我的标签收藏") }
+            )
         }
     ) { paddingValues ->
 
